@@ -13973,6 +13973,14 @@ export interface Locale extends ILocale {
          * 直前のその期間に出された申請をすべて数えます (却下や取り下げも含みます)。0 はこの期間の上限なしという意味ですが、複数のロールに属している利用者には大きい方の値が採用されるため、個別のロールに 0 を入れてもベースロールの上限は外れません (外すにはそのロールの優先度を上げてください)。申請できるかどうか自体は「カスタム絵文字の登録を申請できる」で決まります。
          */
         "emojiApplicationQuota_caption": string;
+        /**
+         * 自分のアカウントを削除できる
+         */
+        "canDeleteAccount": string;
+        /**
+         * このロールのメンバーが自分のアカウントの削除を申請できるようにします。管理者が他のアカウントを削除する操作には影響しません。
+         */
+        "canDeleteAccount_caption": string;
     };
     "_mkgoAvatarDecoration": {
         /**

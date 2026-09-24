@@ -256,6 +256,17 @@ SPDX-License-Identifier: AGPL-3.0-only
 			</template>
 		</XFolder>
 
+		<XFolder v-if="matchQuery([i18n.ts._mkgoRolePolicy.canDeleteAccount, 'canDeleteAccount'])" v-model:policyMeta="canDeleteAccountMeta" :isBaseRole="isBaseRole" :readonly="readonly">
+			<template #label>{{ i18n.ts._mkgoRolePolicy.canDeleteAccount }}</template>
+			<template #valueText>{{ canDeleteAccount ? i18n.ts.yes : i18n.ts.no }}</template>
+			<template #default="{ disabled }">
+				<MkSwitch v-model="canDeleteAccount" :disabled="disabled">
+					<template #label>{{ i18n.ts.enable }}</template>
+					<template #caption>{{ i18n.ts._mkgoRolePolicy.canDeleteAccount_caption }}</template>
+				</MkSwitch>
+			</template>
+		</XFolder>
+
 		<XFolder v-if="matchQuery([i18n.ts._mkgoRolePolicy.canUseChunkedUpload, 'canUseChunkedUpload'])" v-model:policyMeta="canUseChunkedUploadMeta" :isBaseRole="isBaseRole" :readonly="readonly">
 			<template #label>{{ i18n.ts._mkgoRolePolicy.canUseChunkedUpload }}</template>
 			<template #valueText>{{ canUseChunkedUpload ? i18n.ts.yes : i18n.ts.no }}</template>
@@ -640,6 +651,7 @@ const mkGoPolicyMetaKeys: string[] = [
 	'canRequestCustomEmojis',
 	'canUseEmojiAsAvatarDecoration',
 	'canSearchIpHistory',
+	'canDeleteAccount',
 	'canUseChunkedUpload',
 	'chunkedUploadMaxConcurrentSessions',
 	'chunkedUploadMaxPendingMb',
@@ -719,6 +731,10 @@ const canUseEmojiAsAvatarDecorationMeta = mkGoPolicyMeta('canUseEmojiAsAvatarDec
 // internal/effectivepolicy/validation.go の default と揃えること。
 const canSearchIpHistory = mkGoPolicyValue('canSearchIpHistory', false);
 const canSearchIpHistoryMeta = mkGoPolicyMeta('canSearchIpHistory');
+// 自分のアカウント削除 (#9)。**既定 true** — backend の
+// internal/effectivepolicy/validation.go の default と揃えること。
+const canDeleteAccount = mkGoPolicyValue('canDeleteAccount', true);
+const canDeleteAccountMeta = mkGoPolicyMeta('canDeleteAccount');
 const canUseChunkedUpload = mkGoPolicyValue('canUseChunkedUpload', true);
 const canUseChunkedUploadMeta = mkGoPolicyMeta('canUseChunkedUpload');
 const chunkedUploadMaxConcurrentSessions = mkGoPolicyValue('chunkedUploadMaxConcurrentSessions', 4);

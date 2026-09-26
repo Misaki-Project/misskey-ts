@@ -69,7 +69,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				</MkFolder>
 			</SearchMarker>
 
-			<SearchMarker :keywords="['account', 'close', 'delete']">
+			<SearchMarker v-if="isAccountDeletionAllowed($i.policies)" :keywords="['account', 'close', 'delete']">
 				<MkFolder>
 					<template #icon><SearchIcon><i class="ti ti-alert-triangle"></i></SearchIcon></template>
 					<template #label><SearchLabel>{{ i18n.ts.closeAccount }}</SearchLabel></template>
@@ -172,6 +172,7 @@ import { enableStoragePersistence, getStoragePersistenceStatusRef, storagePersis
 import { ensureSignin } from '@/i.js';
 import { i18n } from '@/i18n.js';
 import { useEmojiRequestEntry } from '@/utility/emoji-request-entry.js';
+import { isAccountDeletionAllowed } from '@/utility/account-delete-policy.js';
 import { definePage } from '@/page.js';
 import FormSection from '@/components/form/section.vue';
 import { prefer } from '@/preferences.js';

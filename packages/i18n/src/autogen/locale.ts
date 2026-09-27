@@ -15056,4 +15056,66 @@ export interface Locale extends ILocale {
          */
         "singleUserModeEffect": string;
     };
+    "_mkgoRegistration": {
+        /**
+         * 登録の受け付け方
+         */
+        "mode": string;
+        /**
+         * 誰でも登録できる
+         */
+        "open": string;
+        /**
+         * アカウント作成に制限を設けません。
+         */
+        "openCaption": string;
+        /**
+         * 招待制
+         */
+        "invite": string;
+        /**
+         * 招待コードを持っている人だけが登録できます。
+         */
+        "inviteCaption": string;
+        /**
+         * 承認制
+         */
+        "approval": string;
+        /**
+         * 申請フォームに答えてもらい、承認した相手だけが登録できます。
+         */
+        "approvalCaption": string;
+        /**
+         * 受け付けない
+         */
+        "closed": string;
+        /**
+         * 招待コード・承認済みの申請・メール確認待ちの登録も含めて、すべての登録を止めます。
+         */
+        "closedCaption": string;
+        /**
+         * 新規登録の受け付けを止めますか？途中まで進んでいる登録も止まります。申請・確認待ち・招待コードの記録は消えないので、再開すれば有効期限内のものはそのまま使えます（承認済みの申請は、承認制で再開した場合に使えます）。
+         */
+        "closeConfirm": string;
+        /**
+         * 承認された相手には確認メールを送ります。
+         */
+        "approvalEmailNote": string;
+        /**
+         * 申請は登録申請の画面で確認できます。
+         */
+        "approvalListNote": string;
+        /**
+         * 現在、新規登録を受け付けていません。
+         */
+        "closedNotice": string;
+        /**
+         * 現在は新規登録を受け付けていないため、発行した招待コードは受け付けを再開するまで使えません。
+         */
+        "inviteUnusableWhileClosed": string;
+        /**
+         * 承認制と招待制が同時に有効になっていて、どこからも登録できない状態です。受け付け方を選び直してください。
+         */
+        "inconsistent": string;
+    };
 }

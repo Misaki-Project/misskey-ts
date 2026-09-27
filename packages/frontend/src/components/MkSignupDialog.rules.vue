@@ -10,12 +10,13 @@ SPDX-License-Identifier: AGPL-3.0-only
 	</div>
 	<div class="_spacer" style="--MI_SPACER-min: 20px; --MI_SPACER-max: 28px;">
 		<div class="_gaps_m">
-			<div v-if="approvalRequiredForSignup || instance.disableRegistration || instance.federation !== 'all'" class="_gaps_s">
+			<div v-if="registrationClosed || approvalRequiredForSignup || instance.disableRegistration || instance.federation !== 'all'" class="_gaps_s">
 				<!--
 					mk-go: 承認制のときは招待制の文言を出さない (#2557)。招待コードは
 					内部で使うだけで利用者には渡らないので、実態と食い違う。
 				-->
-				<MkInfo v-if="approvalRequiredForSignup" warn>このサーバーの登録は承認制です。申請すると管理者が確認し、承認されると登録できます。</MkInfo>
+				<MkInfo v-if="registrationClosed" warn>{{ i18n.ts._mkgoRegistration.closedNotice }}</MkInfo>
+				<MkInfo v-else-if="approvalRequiredForSignup" warn>このサーバーの登録は承認制です。申請すると管理者が確認し、承認されると登録できます。</MkInfo>
 				<MkInfo v-else-if="instance.disableRegistration" warn>{{ i18n.ts.invitationRequiredToRegister }}</MkInfo>
 				<MkInfo v-if="instance.federation === 'specified'" warn>{{ i18n.ts.federationSpecified }}</MkInfo>
 				<MkInfo v-else-if="instance.federation === 'none'" warn>{{ i18n.ts.federationDisabled }}</MkInfo>
@@ -71,9 +72,11 @@ SPDX-License-Identifier: AGPL-3.0-only
 <script lang="ts" setup>
 import { computed, ref } from 'vue';
 import { instance } from '@/instance.js';
+import { isRegistrationClosed } from '@/utility/registration-mode.js';
 
 // mk-go 独自の meta なので misskey-js の型集合には無い (#2557)。
 const approvalRequiredForSignup = (instance as unknown as Record<string, unknown>).approvalRequiredForSignup === true;
+const registrationClosed = isRegistrationClosed();
 import { i18n } from '@/i18n.js';
 import MkButton from '@/components/MkButton.vue';
 import MkFolder from '@/components/MkFolder.vue';

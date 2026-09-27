@@ -18,19 +18,21 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<!-- eslint-disable-next-line vue/no-v-html -->
 				<div v-html="instance.description || i18n.ts.headlineMisskey"></div>
 			</div>
-			<div v-if="approvalRequiredForSignup || instance.disableRegistration || instance.federation !== 'all'" :class="$style.mainWarn" class="_gaps_s">
+			<div v-if="registrationClosed || approvalRequiredForSignup || instance.disableRegistration || instance.federation !== 'all'" :class="$style.mainWarn" class="_gaps_s">
 				<!--
 					mk-go: 承認制のときは招待制の文言を出さない (#2557)。招待コードは
 					内部で使うだけで利用者には渡らないので、実態と食い違う。
 				-->
-				<MkInfo v-if="approvalRequiredForSignup" warn>このサーバーの登録は承認制です。申請すると管理者が確認し、承認されると登録できます。</MkInfo>
+				<!-- mk-go: 受け付けていないときは招待制と出さない (#3186)。招待コードも使えないので。 -->
+				<MkInfo v-if="registrationClosed" warn>{{ i18n.ts._mkgoRegistration.closedNotice }}</MkInfo>
+				<MkInfo v-else-if="approvalRequiredForSignup" warn>このサーバーの登録は承認制です。申請すると管理者が確認し、承認されると登録できます。</MkInfo>
 				<MkInfo v-else-if="instance.disableRegistration" warn>{{ i18n.ts.invitationRequiredToRegister }}</MkInfo>
 				<MkInfo v-if="instance.federation === 'specified'" warn>{{ i18n.ts.federationSpecified }}</MkInfo>
 				<MkInfo v-else-if="instance.federation === 'none'" warn>{{ i18n.ts.federationDisabled }}</MkInfo>
 			</div>
 			<!-- mk-go: 「他のサーバーを探す」を削除した (#2814)。理由は docs/divergence.md の §4-2 -->
 			<div class="_gaps_s" :class="$style.mainActions">
-				<MkButton :class="$style.mainAction" full rounded gradate data-testid="signup" style="margin-right: 12px;" @click="signup()">{{ i18n.ts.joinThisServer }}</MkButton>
+				<MkButton v-if="!registrationClosed" :class="$style.mainAction" full rounded gradate data-testid="signup" style="margin-right: 12px;" @click="signup()">{{ i18n.ts.joinThisServer }}</MkButton>
 				<MkButton :class="$style.mainAction" full rounded data-testid="signin" @click="signin()">{{ i18n.ts.login }}</MkButton>
 			</div>
 		</div>
@@ -71,9 +73,11 @@ import * as os from '@/os.js';
 import { misskeyApi } from '@/utility/misskey-api.js';
 import { i18n } from '@/i18n.js';
 import { instance } from '@/instance.js';
+import { isRegistrationClosed } from '@/utility/registration-mode.js';
 
 // mk-go 独自の meta なので misskey-js の型集合には無い (#2557)。
 const approvalRequiredForSignup = (instance as unknown as Record<string, unknown>).approvalRequiredForSignup === true;
+const registrationClosed = isRegistrationClosed();
 import MkNumber from '@/components/MkNumber.vue';
 import XActiveUsersChart from '@/components/MkVisitorDashboard.ActiveUsersChart.vue';
 import { openInstanceMenu } from '@/ui/_common_/common.js';

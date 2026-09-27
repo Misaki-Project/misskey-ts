@@ -7,6 +7,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 <PageWithHeader :actions="headerActions" :tabs="headerTabs">
 	<div class="_spacer" style="--MI_SPACER-w: 800px;">
 		<div class="_gaps_m">
+			<!-- mk-go: 受け付けていない間も発行はできる。使えないことだけ伝える (#3186)。 -->
+			<MkInfo v-if="registrationClosed" warn>{{ i18n.ts._mkgoRegistration.inviteUnusableWhileClosed }}</MkInfo>
 			<MkFolder :expanded="false">
 				<template #icon><i class="ti ti-plus"></i></template>
 				<template #label>{{ i18n.ts.createInviteCode }}</template>
@@ -61,6 +63,10 @@ import MkInviteCode from '@/components/MkInviteCode.vue';
 import { definePage } from '@/page.js';
 import { useMkSelect } from '@/composables/use-mkselect.js';
 import { Paginator } from '@/utility/paginator.js';
+import MkInfo from '@/components/MkInfo.vue';
+import { isRegistrationClosed } from '@/utility/registration-mode.js';
+
+const registrationClosed = isRegistrationClosed();
 
 const {
 	model: type,

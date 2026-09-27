@@ -49,6 +49,7 @@ import { misskeyApi } from '@/utility/misskey-api.js';
 import { lookupUser, lookupUserByEmail, lookupFile } from '@/utility/admin-lookup.js';
 import { classifySettingWarnings, knownSingleUserMode, lacksBotProtection, loadDismissedWarnings, updateDismissedWarnings } from '@/utility/admin-setting-warnings.js';
 import type { SettingWarningId } from '@/utility/admin-setting-warnings.js';
+import { isRegistrationClosed } from '@/utility/registration-mode.js';
 import { definePage, provideMetadataReceiver, provideReactiveMetadata } from '@/page.js';
 import { useRouter } from '@/router.js';
 import { genSearchIndexes } from '@/utility/inapp-search.js';
@@ -414,9 +415,10 @@ provideReactiveMetadata(INFO);
 
 function invite() {
 	misskeyApi('admin/invite/create').then(x => {
+		// 受け付けていない間も発行はできる。使えないことだけ添える (#3186)。
 		os.alert({
 			type: 'info',
-			text: x[0].code,
+			text: isRegistrationClosed() ? `${x[0].code}\n\n${i18n.ts._mkgoRegistration.inviteUnusableWhileClosed}` : x[0].code,
 		});
 	}).catch(err => {
 		os.alert({

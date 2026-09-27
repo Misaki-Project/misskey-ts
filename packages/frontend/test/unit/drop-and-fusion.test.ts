@@ -115,7 +115,7 @@ describe('bubble game overflow grace (#3193)', () => {
 
 	// リプレイと途中保存 (#3192) の早送りは、同じシードと操作の記録から同じ結末に
 	// なることが前提。判定を実時間で数えるとここが崩れる。
-	test.each(['normal', 'square'] as const)('%s: 同じシードと記録から同じ結末になる', (mode) => {
+	test.each(['normal', 'square', 'bouncy', 'space'] as const)('%s: 同じシードと記録から同じ結末になる', (mode) => {
 		const r = playUntilOver(mode, 'seed-b', 2);
 		const serialized = DropAndFusionGame.serializeLogs(r.logs);
 		const again = replay(mode, 'seed-b', serialized);
@@ -331,5 +331,188 @@ describe('bubble game save validation (#3192)', () => {
 		expect(isDropAndFusionSaveExpired(save(SAVE_MAX_AGE_MS - 1), now)).toBe(false);
 		expect(isDropAndFusionSaveExpired(save(SAVE_MAX_AGE_MS + 1), now)).toBe(true);
 		expect(isDropAndFusionSaveExpired({ v: 4, m: 'normal', s: 'x', l: [] }, now)).toBe(true);
+	});
+});
+
+/**
+ * mk-go: BOUNCY モードと、SPACE / BOUNCY の壁 (#3194)。
+ *
+ * はみ出しの判定に猶予がある (#3193) と、漂う玉 (space) は壁の上を越え、よく弾む玉
+ * (bouncy) は挟まれて角から押し出され、箱の外へ出て消えたままゲームが続いた。
+ */
+describe('bubble game bouncy / space (#3194)', () => {
+	function droppedBody(mode: Mode) {
+		const g = newGame(mode, 'seed');
+		g.start();
+		for (let i = 0; i < g.DROP_COOLTIME; i++) g.tick();
+		g.drop(200);
+		const bodies = g.engine.world.bodies;
+		return bodies[bodies.length - 1];
+	}
+
+	test('bouncy はよく弾み、摩擦がほぼ無い。空気抵抗は通常のまま', () => {
+		const b = droppedBody('bouncy');
+		expect(b.restitution).toBeCloseTo(0.9);
+		expect(b.friction).toBeCloseTo(0.01);
+		expect(b.frictionStatic).toBe(0);
+		expect(b.frictionAir).toBeCloseTo(0.01);
+	});
+
+	test('normal の性質は変わらない', () => {
+		const b = droppedBody('normal');
+		expect(b.restitution).toBeCloseTo(0.2);
+		expect(b.friction).toBeCloseTo(0.7);
+		expect(b.frictionStatic).toBe(5);
+		expect(b.frictionAir).toBeCloseTo(0.01);
+	});
+
+	function walls(mode: Mode) {
+		const g = newGame(mode, 'walls');
+		const statics = g.engine.world.bodies.filter(b => b.label === '_wall_');
+		const floor = statics.find(b => b.position.x === g.GAME_WIDTH / 2)!;
+		const sides = statics.filter(b => b !== floor);
+		return { g, floor, sides };
+	}
+
+	// **既存のモードの壁は本家のまま。** 形が変わると版 4 のリプレイと途中保存の結末が変わる。
+	test.each(['normal', 'square', 'yen', 'sweets'] as const)('%s の壁は本家のまま', (mode) => {
+		const { g, floor, sides } = walls(mode);
+		const W = g.GAME_WIDTH, H = g.GAME_HEIGHT, M = g.PLAYAREA_MARGIN, T = 100;
+		const box = (b: typeof floor) => [b.bounds.min.x, b.bounds.min.y, b.bounds.max.x, b.bounds.max.y];
+		// 本家の組み立て (厚さ 100) そのまま。
+		expect(box(floor)).toEqual([0, H - M, W, H - M + T]);
+		expect(sides.map(box).sort((a, b) => a[0] - b[0])).toEqual([
+			[M - T, 0, M, H],
+			[W - M, 0, W - M + T, H],
+		]);
+	});
+
+	// 角を塞ぐ (床を壁の外まで広げ、壁を床の下まで伸ばす) / 壁を上へ伸ばす。
+	test.each(['bouncy', 'space'] as const)('%s は角が塞がり、壁が上へ伸びている', (mode) => {
+		const { g, floor, sides } = walls(mode);
+		expect(sides).toHaveLength(2);
+		for (const w of sides) {
+			expect(w.bounds.min.y).toBeLessThanOrEqual(-6000);
+			expect(w.bounds.max.y).toBeGreaterThanOrEqual(floor.bounds.max.y);
+		}
+		// 床はちょうど壁の外側の面まで。短いと角に隙間ができ、長いと壁の外に玉が載る段差になる。
+		const outer = [Math.min(...sides.map(w => w.bounds.min.x)), Math.max(...sides.map(w => w.bounds.max.x))];
+		expect([floor.bounds.min.x, floor.bounds.max.x]).toEqual(outer);
+		// 内側の面は本家と同じ。
+		const inner = sides.map(w => (w.position.x < 0 ? w.bounds.max.x : w.bounds.min.x)).sort((a, b) => a - b);
+		expect(inner).toEqual([g.PLAYAREA_MARGIN, g.GAME_WIDTH - g.PLAYAREA_MARGIN]);
+		expect(floor.bounds.min.y).toBe(g.GAME_HEIGHT - g.PLAYAREA_MARGIN);
+	});
+
+	/**
+	 * Drops a mono and returns how far it bounces back up after its first contact.
+	 * `onBall` drops it on a mono that is already resting.
+	 *
+	 * **どちらも 2 番目の玉を測る。** 床の場合は 1 番目をホールドして除ける。大きさが違うと
+	 * 跳ね方も違うので、比べる意味が無くなる。
+	 */
+	function rebound(mode: Mode, onBall: boolean) {
+		const g = newGame(mode, 'rebound');
+		g.start();
+		const ticks = (n: number) => { for (let i = 0; i < n; i++) g.tick(); };
+		ticks(g.DROP_COOLTIME);
+		if (onBall) {
+			g.drop(225);
+			ticks(300);
+		} else {
+			g.hold();
+		}
+		g.drop(225);
+		const bodies = g.engine.world.bodies;
+		const body = bodies[bodies.length - 1];
+		let lowest: number | null = null;
+		let top = Infinity;
+		for (let i = 0; i < 400; i++) {
+			g.tick();
+			if (lowest == null) {
+				if (body.velocity.y < 0 && body.position.y > 150) lowest = body.position.y;
+			} else {
+				top = Math.min(top, body.position.y);
+			}
+		}
+		// 跳ね返りを一度も捉えられなかったら 0 ではなく失敗にする (跳ねない、を空振りで満たさない)。
+		expect(lowest).not.toBeNull();
+		return { height: lowest! - top, size: body.circleRadius, below: onBall ? bodies[bodies.length - 2].circleRadius : null };
+	}
+
+	// 物理エンジンは積み重なった玉への衝突で勢いを下の玉と床へ逃がすので、補わないと
+	// 落ちている玉に当たってもほとんど跳ねない (実測 1px 未満。床では 169px)。
+	test('bouncy: 止まっている玉に当たっても、床と同じくらい跳ねる', () => {
+		const floor = rebound('bouncy', false);
+		const onBall = rebound('bouncy', true);
+		// 同じ玉を比べている。下の玉とは大きさが違う (同じだと合体してしまう)。
+		expect(onBall.size).toBe(floor.size);
+		expect(onBall.below).not.toBe(onBall.size);
+		expect(floor.height).toBeGreaterThan(100);
+		expect(onBall.height).toBeGreaterThan(100);
+		expect(onBall.height).toBeLessThan(floor.height * 1.5);
+	});
+
+	test('normal は止まっている玉に当たってもほとんど跳ねない (補うのは bouncy だけ)', () => {
+		expect(rebound('normal', true).height).toBeLessThan(20);
+	});
+
+	// よく弾む玉は挟まれると 60px/tick を超える速さで押し出され、その勢いで壁を抜ける。
+	test('bouncy の玉の速さには上限がある', () => {
+		const g = newGame('bouncy', 'speed');
+		const rng = botRng(9);
+		let max = 0;
+		g.start();
+		while (g.frame < 60 * 60 * 3 && g.tick()) {
+			if (g.frame % 35 === 0) g.drop(30 + rng() * 390);
+			for (const b of g.engine.world.bodies) {
+				if (!b.isStatic) max = Math.max(max, Math.sqrt((b.velocity.x ** 2) + (b.velocity.y ** 2)));
+			}
+		}
+		expect(max).toBeGreaterThan(5);
+		expect(max).toBeLessThanOrEqual(15 + 1e-9);
+	});
+
+	// 上限は bouncy だけ。既存のモードにかけると版 4 の結末が変わる。square はこの局の
+	// 1046 フレーム目に 25.8 まで速くなる (実測)。
+	test('既存のモードには速さの上限をかけない', () => {
+		const g = newGame('square', 'nocap-3');
+		const rng = botRng(3);
+		let max = 0;
+		g.start();
+		while (g.frame < 1100 && g.tick()) {
+			if (g.frame % 35 === 0) g.drop(30 + rng() * 390);
+			for (const b of g.engine.world.bodies) {
+				if (!b.isStatic) max = Math.max(max, Math.sqrt((b.velocity.x ** 2) + (b.velocity.y ** 2)));
+			}
+		}
+		// 上限をかけても丸めで 15 をわずかに超えるので、余裕を持たせて見る。
+		expect(max).toBeGreaterThan(16);
+	});
+
+	// 壁を上へ伸ばさないと、この 2 局で玉が壁の上を越えて外に居続けた (実測)。
+	test.each([[8, 'r8'], [22, 'wall-22']] as const)('space: 玉が壁の上を越えて外に居続けない (bot %i)', (bot, seed) => {
+		const g = newGame('space', seed);
+		const rng = botRng(bot);
+		const inner = { l: g.PLAYAREA_MARGIN, r: g.GAME_WIDTH - g.PLAYAREA_MARGIN, b: g.GAME_HEIGHT - g.PLAYAREA_MARGIN };
+		const outSince = new Map<number, number>();
+		let longestOut = 0;
+		g.start();
+		for (;;) {
+			if (g.frame % 35 === 0) g.drop(30 + rng() * 390);
+			const next = g.tick();
+			for (const b of g.engine.world.bodies) {
+				if (b.isStatic) continue;
+				const out = b.bounds.max.x < inner.l || b.bounds.min.x > inner.r || b.bounds.min.y > inner.b;
+				if (!out) {
+					outSince.delete(b.id);
+					continue;
+				}
+				if (!outSince.has(b.id)) outSince.set(b.id, g.frame);
+				longestOut = Math.max(longestOut, g.frame - outSince.get(b.id)!);
+			}
+			if (!next || g.frame > 60 * 60 * 10) break;
+		}
+		expect(longestOut).toBeLessThan(30);
 	});
 });

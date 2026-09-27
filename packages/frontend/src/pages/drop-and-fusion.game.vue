@@ -524,7 +524,7 @@ const SWEETS_MONOS: FrontendMonoDefinition[] = [{
 }];
 
 const props = defineProps<{
-	gameMode: 'normal' | 'square' | 'yen' | 'sweets' | 'space';
+	gameMode: 'normal' | 'square' | 'yen' | 'sweets' | 'space' | 'bouncy';
 	mute: boolean;
 	/**
 	 * A suspended game to continue from (mk-go, #3192). The caller has already
@@ -543,6 +543,7 @@ const monoDefinitions = computed(() => {
 		props.gameMode === 'yen' ? YEN_MONOS :
 		props.gameMode === 'sweets' ? SWEETS_MONOS :
 		props.gameMode === 'space' ? NORAML_MONOS :
+		props.gameMode === 'bouncy' ? NORAML_MONOS :
 		[] as never;
 });
 
@@ -551,6 +552,9 @@ function getScoreUnit(gameMode: string) {
 		gameMode === 'square' ? 'pt' :
 		gameMode === 'yen' ? '円' :
 		gameMode === 'sweets' ? 'kcal' :
+		// mk-go: space はメニューから外れていて抜けていた。bouncy は #3194。
+		gameMode === 'space' ? 'pt' :
+		gameMode === 'bouncy' ? 'pt' :
 		'' as never;
 }
 

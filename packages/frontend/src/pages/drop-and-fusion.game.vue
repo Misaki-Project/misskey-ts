@@ -7,7 +7,9 @@ SPDX-License-Identifier: AGPL-3.0-only
 <div class="_spacer" style="--MI_SPACER-w: 800px;">
 	<div :class="$style.root">
 		<div v-if="!gameLoaded" :class="$style.loadingScreen">
-			<div>{{ i18n.ts.loading }}<MkEllipsis/></div>
+			<!-- mk-go (#3192): 途中保存からの早送り中は進捗を出す。長いゲームだと数秒かかる。 -->
+			<div v-if="fastForwardProgress != null">{{ i18n.ts._mkgoBubbleGame.resuming }} {{ Math.floor(fastForwardProgress * 100) }}%</div>
+			<div v-else>{{ i18n.ts.loading }}<MkEllipsis/></div>
 		</div>
 		<!-- ↓に対してTransitionコンポーネントを使うと何故かkeyを指定していてもキャッシュが効かず様々なコンポーネントが都度再評価されてパフォーマンスが低下する -->
 		<div v-show="gameLoaded" class="_gaps_s">
@@ -59,6 +61,12 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<img v-if="store.s.darkMode" src="/client-assets/drop-and-fusion/frame-dark.svg" :class="$style.mainFrameImg"/>
 				<img v-else src="/client-assets/drop-and-fusion/frame-light.svg" :class="$style.mainFrameImg"/>
 				<canvas ref="canvasEl" :class="$style.canvas"></canvas>
+				<!--
+					mk-go (#3193): はみ出している間、判定領域の下端を点滅させる。判定は
+					「判定領域に 2 秒とどまったら終了」なので、猶予があることと、このままだと
+					終わることを伝える。
+				-->
+				<div v-if="overflowWarning && !isGameOver" :class="$style.overflowWarning"></div>
 				<Transition
 					:enterActiveClass="$style.transition_combo_enterActive"
 					:leaveActiveClass="$style.transition_combo_leaveActive"
@@ -191,7 +199,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 </template>
 
 <script lang="ts" setup>
-import { computed, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch, useTemplateRef } from 'vue';
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch, useTemplateRef } from 'vue';
 import * as Matter from 'matter-js';
 import * as Misskey from 'misskey-js';
 import { DropAndFusionGame } from 'misskey-bubble-game';
@@ -213,6 +221,10 @@ import * as sound from '@/utility/sound.js';
 import MkRange from '@/components/MkRange.vue';
 import { copyToClipboard } from '@/utility/copy-to-clipboard.js';
 import { prefer } from '@/preferences.js';
+import { clearDropAndFusionSave, writeDropAndFusionSave } from '@/utility/drop-and-fusion-save.js';
+import { fastForwardGame } from '@/utility/drop-and-fusion-fast-forward.js';
+import type { FastForwardResult } from '@/utility/drop-and-fusion-fast-forward.js';
+import type { DropAndFusionSave } from '@/utility/drop-and-fusion-save.js';
 
 type FrontendMonoDefinition = {
 	id: string;
@@ -514,6 +526,11 @@ const SWEETS_MONOS: FrontendMonoDefinition[] = [{
 const props = defineProps<{
 	gameMode: 'normal' | 'square' | 'yen' | 'sweets' | 'space';
 	mute: boolean;
+	/**
+	 * A suspended game to continue from (mk-go, #3192). The caller has already
+	 * checked that its version matches.
+	 */
+	resume?: DropAndFusionSave | null;
 }>();
 
 const emit = defineEmits<{
@@ -587,6 +604,18 @@ const showConfig = ref(false);
 const replaying = ref(false);
 const replayPlaybackRate = ref(1);
 const currentFrame = ref(0);
+// mk-go (#3193): 判定領域に玉がとどまっている間 true。
+const overflowWarning = ref(false);
+// mk-go (#3192): 途中保存からの早送りの進捗 (0-1)。早送り中でなければ null。
+const fastForwardProgress = ref<number | null>(null);
+// 早送り中は効果音・演出・実績・保存を止める。リアクティブにする必要は無い
+// (イベントの中で読むだけ)。
+let fastForwarding = false;
+// dispose のたびに進める。start の途中 (テクスチャの読み込み・早送り) で画面を離れたかを見る。
+let generation = 0;
+let deactivated = false;
+// 途中保存は最初の start で 1 回だけ使う (リトライで同じ局面に戻らないように)。
+let pendingResume: DropAndFusionSave | null = props.resume ?? null;
 const bgmVolume = ref(prefer.s['game.dropAndFusion'].bgmVolume);
 const sfxVolume = ref(prefer.s['game.dropAndFusion'].sfxVolume);
 
@@ -676,8 +705,10 @@ function tick() {
 function tickReplay() {
 	let hasNextTick;
 	for (let i = 0; i < replayPlaybackRate.value; i++) {
-		const log = logs!.find(x => x.frame === game.frame);
-		if (log) {
+		// mk-go: 同じフレームの操作は全部当てる (保持してすぐ落とすと 2 つになる)。
+		// 本家は find で最初の 1 つだけを当てていて、途中保存の早送り (#3192) と結末が
+		// ずれる。
+		for (const log of logs!.filter(x => x.frame === game.frame)) {
 			switch (log.operation) {
 				case 'drop': {
 					game.drop(log.x);
@@ -709,15 +740,60 @@ function tickReplay() {
 }
 
 async function start() {
+	const resume = pendingResume;
+	pendingResume = null;
+	const myGeneration = generation;
+	if (resume != null) {
+		// 同じシードでゲームを作り直す。setup で作ったゲームはまだ始まっていない。
+		game.dispose();
+		seed = resume.s;
+		game = new DropAndFusionGame({
+			seed: seed,
+			gameMode: props.gameMode,
+			getMonoRenderOptions,
+		});
+		attachGameEvents();
+	}
+
 	renderer = createRendererInstance(game);
 	await loadMonoTextures();
 	Matter.Render.lookAt(renderer, {
 		min: { x: 0, y: 0 },
 		max: { x: game.GAME_WIDTH, y: game.GAME_HEIGHT },
 	});
-	Matter.Render.run(renderer);
+	// 待っている間に画面を離れた (dispose された) ら何もしない。続けると、壁も床も
+	// 消えたゲームを描画と tick が回し続ける。
+	if (generation !== myGeneration) return;
 	game.start();
-	window.requestAnimationFrame(tick);
+	if (resume != null) {
+		// **描画を始める前に早送りする。** Render.run の後だと早送りの途中を毎フレーム
+		// 描いてしまう。
+		fastForwarding = true;
+		fastForwardProgress.value = 0;
+		let result: FastForwardResult;
+		try {
+			result = await fastForwardGame(game, DropAndFusionGame.deserializeLogs(resume.l), {
+				isCancelled: () => generation !== myGeneration,
+				onProgress: p => { fastForwardProgress.value = p; },
+			});
+		} finally {
+			fastForwarding = false;
+			fastForwardProgress.value = null;
+		}
+		if (result === 'cancelled') return;
+		if (result === 'gameOver') {
+			// 早送りの途中で終わった (記録と結末がずれた)。盤面は見せるが、tick も
+			// 「GO」も始めない。登録と保存の削除は gameOver のイベントで済んでいる。
+			Matter.Render.run(renderer);
+			gameLoaded.value = true;
+			readyGo.value = null;
+			return;
+		}
+	}
+	Matter.Render.run(renderer);
+	// mk-go: 最初の rAF も tickRaf に控える。控えないと、この 1 フレームの間に dispose
+	// されたとき cancel されずに tick が回り続ける。
+	tickRaf = window.requestAnimationFrame(tick);
 
 	gameLoaded.value = true;
 
@@ -727,6 +803,22 @@ async function start() {
 			readyGo.value = null;
 		}, 1000);
 	}, 1500);
+}
+
+/**
+ * Saves the game so far, so it can be continued after a reload (mk-go, #3192).
+ *
+ * 操作の記録が増えるのは落としたときと保持したときだけなので、そのたびに保存すれば
+ * 最後の状態まで戻せる。
+ */
+function saveProgress() {
+	if (replaying.value || fastForwarding || isGameOver.value) return;
+	writeDropAndFusionSave({
+		v: game.GAME_VERSION,
+		m: props.gameMode,
+		s: seed,
+		l: DropAndFusionGame.serializeLogs(game.getLogs()),
+	});
 }
 
 function onClick(ev: PointerEvent) {
@@ -799,9 +891,12 @@ function reset() {
 	maxCombo.value = 0;
 	gameLoaded.value = false;
 	readyGo.value = null;
+	overflowWarning.value = false;
 }
 
 function dispose() {
+	// 進行中の start / 早送りを止める合図。
+	generation++;
 	game.dispose();
 	if (renderer) Matter.Render.stop(renderer);
 	if (tickRaf) {
@@ -822,7 +917,10 @@ function replay() {
 		getMonoRenderOptions,
 	});
 	attachGameEvents();
+	const myGeneration = generation;
 	os.promiseDialog(loadMonoTextures(), async () => {
+		// mk-go: 読み込みの間に画面を離れたら始めない (壁の無いゲームを回し続ける)。
+		if (generation !== myGeneration) return;
 		renderer = createRendererInstance(game);
 		Matter.Render.lookAt(renderer, {
 			min: { x: 0, y: 0 },
@@ -941,6 +1039,10 @@ SCORE: ${score.value.toLocaleString()}${getScoreUnit(props.gameMode)}`,
 }
 
 function attachGameEvents() {
+	game.addListener('overflowWarning', value => {
+		overflowWarning.value = value;
+	});
+
 	game.addListener('changeScore', value => {
 		score.value = value;
 	});
@@ -962,8 +1064,9 @@ function attachGameEvents() {
 
 	game.addListener('changeHolding', value => {
 		holdingStock.value = value;
+		saveProgress();
 
-		if (!props.mute) {
+		if (!props.mute && !fastForwarding) {
 			sound.playUrl('/client-assets/drop-and-fusion/hold.mp3', {
 				volume: 0.5 * sfxVolume.value,
 				playbackRate: replayPlaybackRate.value,
@@ -972,7 +1075,9 @@ function attachGameEvents() {
 	});
 
 	game.addListener('dropped', (x) => {
-		if (!props.mute) {
+		saveProgress();
+
+		if (!props.mute && !fastForwarding) {
 			const panV = x - game.PLAYAREA_MARGIN;
 			const panW = game.GAME_WIDTH - game.PLAYAREA_MARGIN - game.PLAYAREA_MARGIN;
 			const pan = ((panV / panW) - 0.5) * 2;
@@ -991,7 +1096,7 @@ function attachGameEvents() {
 			}
 		}
 
-		if (replaying.value) return;
+		if (replaying.value || fastForwarding) return;
 
 		dropReady.value = false;
 		window.setTimeout(() => {
@@ -1002,6 +1107,8 @@ function attachGameEvents() {
 	});
 
 	game.addListener('fusioned', (x, y, nextMono, scoreDelta) => {
+		// 早送り中は演出も音も出さない (#3192)。
+		if (fastForwarding) return;
 		if (!canvasEl.value) return;
 
 		const rect = canvasEl.value.getBoundingClientRect();
@@ -1055,7 +1162,7 @@ function attachGameEvents() {
 	const soundPitchMin = 0.5;
 
 	game.addListener('collision', (energy, bodyA, bodyB) => {
-		if (!props.mute && (energy > minCollisionEnergyForSound)) {
+		if (!props.mute && !fastForwarding && (energy > minCollisionEnergyForSound)) {
 			const volume = (Math.min(maxCollisionEnergyForSound, energy - minCollisionEnergyForSound) / maxCollisionEnergyForSound) / 4;
 			const panV =
 				bodyA.label === '_wall_' ? bodyB.position.x - game.PLAYAREA_MARGIN :
@@ -1082,7 +1189,7 @@ function attachGameEvents() {
 	});
 
 	game.addListener('monoAdded', (mono) => {
-		if (replaying.value) return;
+		if (replaying.value || fastForwarding) return;
 
 		// 実績関連
 		if (mono.level === 10) {
@@ -1112,6 +1219,9 @@ function attachGameEvents() {
 			endReplay();
 			return;
 		}
+
+		// 終わったゲームは再開しない (#3192)。降参もここを通る。
+		clearDropAndFusionSave(props.gameMode);
 
 		logs = game.getLogs();
 		endedAtFrame = game.frame;
@@ -1157,6 +1267,10 @@ useInterval(() => {
 }, 1000, { immediate: false, afterMounted: true });
 
 onMounted(async () => {
+	// mk-go: 読み込み (途中保存の早送りを含む) の間に画面を離れると dispose される。
+	// その後で BGM を流すと、止める人がいない (onUnmounted はもう走った) のでタイトルや
+	// 他のページで鳴り続ける。
+	const mountedGeneration = generation;
 	try {
 		highScore.value = await misskeyApi('i/registry/get', {
 			scope: ['dropAndFusionGame'],
@@ -1206,10 +1320,13 @@ onMounted(async () => {
 	});
 	*/
 
+	if (generation !== mountedGeneration) return;
 	await start();
+	if (generation !== mountedGeneration) return;
 
 	const bgmBuffer = await sound.loadAudio('/client-assets/drop-and-fusion/bgm_1.mp3');
 	if (!bgmBuffer) return;
+	if (generation !== mountedGeneration) return;
 	bgmNodes = sound.createSourceNode(bgmBuffer, {
 		volume: props.mute ? 0 : bgmVolume.value,
 	});
@@ -1226,6 +1343,16 @@ onUnmounted(() => {
 onDeactivated(() => {
 	dispose();
 	bgmNodes?.soundSource.stop();
+	deactivated = true;
+});
+
+// mk-go: ページはキャッシュされる (KeepAlive) ので、離れて戻ると片付け済みのゲームが
+// そのまま出てくる (読み込み中のまま抜けられない / 壁の無い盤面)。タイトルへ戻す。
+// 途中保存は残っているので「続きから」で同じ局面に戻れる (#3192)。
+onActivated(() => {
+	if (!deactivated) return;
+	deactivated = false;
+	emit('end');
 });
 
 definePage(() => ({
@@ -1440,6 +1567,25 @@ definePage(() => ({
 	left: -10px;
 	z-index: 3;
 	animation: currentMonoArrow 2s ease infinite;
+}
+
+.overflowWarning {
+	// 判定領域 (y = -100..100) の下端。canvas の高さは GAME_HEIGHT (600) に対応する。
+	position: absolute;
+	z-index: 3;
+	top: calc(100% * 100 / 600);
+	left: 0;
+	right: 0;
+	height: 3px;
+	margin-top: -1px;
+	background: var(--MI_THEME-error);
+	pointer-events: none;
+	animation: overflowWarningBlink 0.5s steps(2, jump-none) infinite alternate;
+}
+
+@keyframes overflowWarningBlink {
+	from { opacity: 1; }
+	to { opacity: 0.2; }
 }
 
 .dropGuide {

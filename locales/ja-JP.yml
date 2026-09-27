@@ -3757,6 +3757,14 @@ _mkgoAvatarDecoration:
 
 _mkgoEmoji:
   importAndReact: "インポートしてリアクション"
+_mkgoBubbleGame:
+  resumeTitle: "中断したゲームがあります"
+  resumeText: "続きから再開しますか？最初から始めると、中断したゲームは消えます。"
+  resumeContinue: "続きから"
+  resumeNew: "最初から"
+  resuming: "再開しています"
+  saveDiscardedVersion: "ゲームが更新されたため、中断したゲームは再開できません。最初から始めます。"
+  saveDiscardedExpired: "中断してから時間が経ちすぎたため、中断したゲームは再開できません。最初から始めます。"
 _mkgoNotification:
   emojiApplicationReceived: "絵文字 :{name}: の登録申請が届きました"
   emojiApplicationReceivedLabel: "絵文字の登録申請"

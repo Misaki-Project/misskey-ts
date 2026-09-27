@@ -45,6 +45,8 @@ export type Keys = (
 	'lastEmojisFetchedAt' | // DEPRECATED, stored in indexeddb (13.9.0~)
 	'emojis' | // DEPRECATED, stored in indexeddb (13.9.0~);
 	`channelLastReadedAt:${string}` |
+	// mk-go: バブルゲームの途中保存 (#3192)。`<userId>:<gameMode>`。
+	`mkgo:dropAndFusion:${string}` |
 	`idbfallback::${string}`
 );
 

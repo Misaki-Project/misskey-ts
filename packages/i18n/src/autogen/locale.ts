@@ -14058,6 +14058,14 @@ export interface Locale extends ILocale {
          */
         "abuseReportResolvedBySomeone": string;
         /**
+         * 未対応 {n} 件
+         */
+        "abuseReportUnresolvedCount": ParameterizedString<"n">;
+        /**
+         * 未対応の通報を一覧で見る
+         */
+        "openUnresolvedReports": string;
+        /**
          * 絵文字 :{name}: の申請が承認されました
          */
         "emojiApplicationApproved": ParameterizedString<"name">;

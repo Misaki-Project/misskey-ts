@@ -110,6 +110,12 @@ SPDX-License-Identifier: AGPL-3.0-only
 					二重で当たる。
 				-->
 				<span v-if="mkGoResolved(notification)" :class="$style.abuseReportResolved">{{ i18n.ts._mkgoNotification.abuseReportResolved }}</span>
+				<!--
+					**未対応の件数 (#3200)。** 通報の通知はモデレーターごとに 1 件へまとめて
+					いる (連打で通知欄が埋まらないように) ので、この通知が指す 1 件が
+					対処済みでも後続が残っていることをここで出す。
+				-->
+				<span v-if="mkGoUnresolvedCount(notification) > 0" :class="$style.abuseReportPending">{{ i18n.tsx._mkgoNotification.abuseReportUnresolvedCount({ n: mkGoUnresolvedCount(notification) }) }}</span>
 			</span>
 			<!--
 				申請が出された (#2987)。**処理済みかどうかは read 時に引き直した
@@ -139,7 +145,10 @@ SPDX-License-Identifier: AGPL-3.0-only
 					</div>
 				</template>
 			</span>
-			<span v-else-if="isMkGoType(notification, 'abuseReport')">{{ i18n.ts._mkgoNotification.abuseReport }}</span>
+			<span v-else-if="isMkGoType(notification, 'abuseReport')">
+				{{ i18n.ts._mkgoNotification.abuseReport }}
+				<span v-if="mkGoUnresolvedCount(notification) > 0" :class="$style.abuseReportPending">{{ i18n.tsx._mkgoNotification.abuseReportUnresolvedCount({ n: mkGoUnresolvedCount(notification) }) }}</span>
+			</span>
 			<!--
 				**未知の型の受け皿 (#2898)。** ここが無いと、mk-go 固有の通知や
 				upstream が後から足した型がヘッダも本文も空で描画される
@@ -243,6 +252,11 @@ SPDX-License-Identifier: AGPL-3.0-only
 			</div>
 			<div v-else-if="isMkGoType(notification, 'abuseReport') && full && mkGoExtra(notification, 'reportId') !== ''" :class="$style.abuseReportCommands">
 				<MkButton :class="$style.abuseReportCommandButton" type="routerLink" :to="`/admin/abuses?reportId=${mkGoExtra(notification, 'reportId')}`" rounded :primary="!mkGoResolved(notification)"><i class="ti ti-exclamation-circle"></i> {{ i18n.ts._mkgoNotification.openModeration }}</MkButton>
+				<!--
+					まとめた通知から後続の通報へ行く口 (#3200)。この 1 件が対処済みなら
+					こちらを主ボタンにする。
+				-->
+				<MkButton v-if="mkGoUnresolvedCount(notification) > 0" :class="$style.abuseReportCommandButton" type="routerLink" to="/admin/abuses" rounded :primary="mkGoResolved(notification)"><i class="ti ti-list"></i> {{ i18n.ts._mkgoNotification.openUnresolvedReports }}</MkButton>
 			</div>
 
 			<div v-if="notification.type === 'reaction:grouped'">
@@ -381,6 +395,17 @@ function mkGoEmojiApplicationReason(notification: Misskey.entities.Notification)
  */
 function mkGoResolved(notification: Misskey.entities.Notification): boolean {
 	return (notification as unknown as Record<string, unknown>).resolved === true;
+}
+
+/**
+ * Number of unresolved reports across the instance (#3200).
+ *
+ * サーバーが read 時に数えて `unresolvedCount` を載せる。数えられなかったときは
+ * 載らないので 0 を返し、件数表示ごと出さない。
+ */
+function mkGoUnresolvedCount(notification: Misskey.entities.Notification): number {
+	const v = (notification as unknown as Record<string, unknown>).unresolvedCount;
+	return typeof v === 'number' ? v : 0;
 }
 
 /**
@@ -643,6 +668,15 @@ function mkGoExtra(notification: Misskey.entities.Notification, key: string): st
 	font-size: 0.8em;
 	background: var(--MI_THEME-buttonBg);
 	opacity: 0.8;
+}
+
+.abuseReportPending {
+	margin-left: 6px;
+	padding: 1px 6px;
+	border-radius: 4px;
+	font-size: 0.8em;
+	color: var(--MI_THEME-error);
+	background: color(from var(--MI_THEME-error) srgb r g b / 0.1);
 }
 
 .abuseReportCommands {

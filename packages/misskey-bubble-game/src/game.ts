@@ -41,16 +41,32 @@ export class DropAndFusionGame extends EventEmitter<{
 	fusioned: (x: number, y: number, nextMono: Mono | null, scoreDelta: number) => void;
 	collision: (energy: number, bodyA: Matter.Body, bodyB: Matter.Body) => void;
 	monoAdded: (mono: Mono) => void;
+	/**
+	 * Emitted when a mono starts or stops overflowing the box (mk-go, #3193).
+	 * `true` while at least one mono stays in the overflow area.
+	 */
+	overflowWarning: (overflowing: boolean) => void;
 	gameOver: () => void;
 }> {
 	private PHYSICS_QUALITY_FACTOR = 16; // 低いほどパフォーマンスが高いがガタガタして安定しなくなる、逆に高すぎても何故か不安定になる
 	private COMBO_INTERVAL = 60; // frame
-	public readonly GAME_VERSION = 3;
+	// mk-go: 4 = はみ出しの判定を「判定領域に 2 秒とどまったら」に変えた (#3193)。
+	// 同じ操作の記録でも結果が変わるので、版を分けないと古いリプレイや途中保存が
+	// 別の結末になる。**static も持つ** — 途中保存 (#3192) の版をゲームを作る前に
+	// 比べるため。
+	public static readonly VERSION = 4;
+	public readonly GAME_VERSION = DropAndFusionGame.VERSION;
 	public readonly GAME_WIDTH = 450;
 	public readonly GAME_HEIGHT = 600;
 	public readonly DROP_COOLTIME = 30; // frame
 	public readonly PLAYAREA_MARGIN = 25;
 	private STOCK_MAX = 4;
+	/**
+	 * How long a mono may stay in the overflow area before the game is over
+	 * (mk-go, #3193).
+	 */
+	public readonly OVERFLOW_GRACE_MS = 2000;
+	private WALL_THICKNESS = 100;
 	private TICK_DELTA = 1000 / 60; // 60fps
 
 	public frame = 0;
@@ -68,6 +84,12 @@ export class DropAndFusionGame extends EventEmitter<{
 	private fusionReadyBodyIds: Matter.Body['id'][] = [];
 
 	private gameOverReadyBodyIds: Matter.Body['id'][] = [];
+
+	/**
+	 * mk-go (#3193): 判定領域に入った玉と、入ったフレーム。出たら (合体して消えたら) 消す。
+	 */
+	private overflowingSince = new Map<Matter.Body['id'], number>();
+	private overflowing = false;
 
 	/**
 	 * fusion予約アイテムのペア
@@ -157,7 +179,7 @@ export class DropAndFusionGame extends EventEmitter<{
 			},
 		};
 
-		const thickness = 100;
+		const thickness = this.WALL_THICKNESS;
 		Matter.Composite.add(this.engine.world, [
 			Matter.Bodies.rectangle(this.GAME_WIDTH / 2, this.GAME_HEIGHT + (thickness / 2) - this.PLAYAREA_MARGIN, this.GAME_WIDTH, thickness, WALL_OPTIONS),
 			Matter.Bodies.rectangle(this.GAME_WIDTH + (thickness / 2) - this.PLAYAREA_MARGIN, this.GAME_HEIGHT / 2, thickness, this.GAME_HEIGHT, WALL_OPTIONS),
@@ -296,17 +318,65 @@ export class DropAndFusionGame extends EventEmitter<{
 		}
 	}
 
-	private onCollisionActive(event: Matter.IEventCollision<Matter.Engine>) {
-		for (const pairs of event.pairs) {
-			const { bodyA, bodyB } = pairs;
+	/**
+	 * Ends the game when a mono has stayed in the overflow area for
+	 * OVERFLOW_GRACE_MS (mk-go, #3193).
+	 *
+	 * 本家は判定領域に**1 フレームでも触れたら**終わる。合体で生まれた大きい玉が
+	 * 周りの玉を押し広げると、玉が一瞬上へ弾かれることがあり、盤面に余裕があるのに
+	 * 終わっていた。
+	 *
+	 * **毎フレーム重なりを調べる** (衝突イベントの発火順に頼らない)。合体して
+	 * 消えた玉は world から外れているので、ここで自然に記録から落ちる。
+	 * **フレーム数で数える** — 実時間を使うとリプレイと途中保存の早送りが別の
+	 * 結果になる。
+	 */
+	private checkOverflow() {
+		// 他の玉とぶつかったことのある玉だけを数える (落とした直後の玉が上部を
+		// 通過しても終わらない)。複数の部品でできた玉 (sweets) は、部品の id で
+		// 記録されていることがあるので、部品まで見る。
+		const candidates = this.engine.world.bodies.filter(b =>
+			b.id !== this.overflowCollider.id &&
+			b.parts.some(p => this.gameOverReadyBodyIds.includes(p.id)));
 
-			// ハコからあふれたかどうかの判定
-			if (bodyA.id === this.overflowCollider.id || bodyB.id === this.overflowCollider.id) {
-				if (this.gameOverReadyBodyIds.includes(bodyA.id) || this.gameOverReadyBodyIds.includes(bodyB.id)) {
-					this.gameOver();
-					break;
-				}
-				continue;
+		const hits = new Set<Matter.Body['id']>();
+		for (const collision of Matter.Query.collides(this.overflowCollider, candidates)) {
+			const other = collision.bodyA.parent.id === this.overflowCollider.id ? collision.bodyB : collision.bodyA;
+			hits.add(other.parent.id);
+		}
+
+		// 念のため: 壁や床を丸ごと突き抜けて失われた玉があれば終了する。本家は判定領域に
+		// 触れた瞬間に終わるので、箱の外へ出た玉がそのまま残ることは無かった。猶予を
+		// 持たせた今、起きると玉が消えたまま続き、実質「玉を捨てる」操作になる (よく弾む
+		// 物理で実際に起きた。今のモードでは実測 0)。**壁の内側の面では判定しない** —
+		// 挟まれた玉は一瞬めり込んで次の tick で押し戻される。そこで終わらせると、それ
+		// 自体が理不尽なゲームオーバーになる。
+		for (const b of this.engine.world.bodies) {
+			if (b.isStatic) continue;
+			if (b.position.x < -this.WALL_THICKNESS || b.position.x > this.GAME_WIDTH + this.WALL_THICKNESS || b.position.y > this.GAME_HEIGHT + this.WALL_THICKNESS) {
+				this.gameOver();
+				return;
+			}
+		}
+
+		for (const id of [...this.overflowingSince.keys()]) {
+			if (!hits.has(id)) this.overflowingSince.delete(id);
+		}
+		for (const id of hits) {
+			if (!this.overflowingSince.has(id)) this.overflowingSince.set(id, this.frame);
+		}
+
+		const overflowing = this.overflowingSince.size > 0;
+		if (overflowing !== this.overflowing) {
+			this.overflowing = overflowing;
+			this.emit('overflowWarning', overflowing);
+		}
+
+		const grace = this.msToFrame(this.OVERFLOW_GRACE_MS);
+		for (const since of this.overflowingSince.values()) {
+			if (this.frame - since >= grace) {
+				this.gameOver();
+				return;
 			}
 		}
 	}
@@ -321,8 +391,15 @@ export class DropAndFusionGame extends EventEmitter<{
 	}
 
 	private gameOver() {
+		if (this.isGameOver) return;
 		this.isGameOver = true;
+		// **gameOver を先に出す。** 警告の解除を先に出すと、受け取る側からは
+		// 「はみ出しが解けて続いた」ように見える。
 		this.emit('gameOver');
+		if (this.overflowing) {
+			this.overflowing = false;
+			this.emit('overflowWarning', false);
+		}
 	}
 
 	public start() {
@@ -335,7 +412,6 @@ export class DropAndFusionGame extends EventEmitter<{
 		this.emit('changeStock', this.stock);
 
 		Matter.Events.on(this.engine, 'collisionStart', this.onCollision.bind(this));
-		Matter.Events.on(this.engine, 'collisionActive', this.onCollisionActive.bind(this));
 	}
 
 	public getLogs() {
@@ -359,6 +435,8 @@ export class DropAndFusionGame extends EventEmitter<{
 		});
 
 		Matter.Engine.update(this.engine, this.TICK_DELTA);
+
+		if (!this.isGameOver) this.checkOverflow();
 
 		const hasNextTick = !this.isGameOver;
 

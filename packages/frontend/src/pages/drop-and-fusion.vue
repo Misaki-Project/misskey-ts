@@ -76,13 +76,14 @@ SPDX-License-Identifier: AGPL-3.0-only
 			</div>
 		</div>
 	</div>
-	<XGame v-else :gameMode="gameMode" :mute="mute" @end="onGameEnd"/>
+	<XGame v-else :gameMode="gameMode" :mute="mute" :resume="resume" @end="onGameEnd"/>
 </Transition>
 </template>
 
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue';
 import * as Misskey from 'misskey-js';
+import { DropAndFusionGame } from 'misskey-bubble-game';
 import XGame from './drop-and-fusion.game.vue';
 import { definePage } from '@/page.js';
 import MkButton from '@/components/MkButton.vue';
@@ -91,6 +92,9 @@ import { useMkSelect } from '@/composables/use-mkselect.js';
 import MkSelect from '@/components/MkSelect.vue';
 import MkSwitch from '@/components/MkSwitch.vue';
 import { misskeyApiGet } from '@/utility/misskey-api.js';
+import * as os from '@/os.js';
+import { clearDropAndFusionSave, isDropAndFusionSaveExpired, loadDropAndFusionSave } from '@/utility/drop-and-fusion-save.js';
+import type { DropAndFusionSave } from '@/utility/drop-and-fusion-save.js';
 
 const {
 	model: gameMode,
@@ -122,7 +126,65 @@ function getScoreUnit(gameMode: string) {
 		'' as never;
 }
 
+// mk-go (#3192): 続きから遊ぶときの途中保存。
+const resume = ref<DropAndFusionSave | null>(null);
+// ダイアログを出している間に開始ボタンをもう一度押されても、二重に始めない。
+let starting = false;
+
 async function start() {
+	if (starting) return;
+	starting = true;
+	try {
+		await prepareStart();
+	} finally {
+		starting = false;
+	}
+}
+
+async function prepareStart() {
+	resume.value = null;
+
+	const save = loadDropAndFusionSave(gameMode.value);
+	if (save != null) {
+		if (isDropAndFusionSaveExpired(save)) {
+			// 古すぎる保存は再開しない。終えてもスコアを登録できない (backend は
+			// 7 日より古いシードを受け付けない)。
+			clearDropAndFusionSave(gameMode.value);
+			await os.alert({
+				type: 'info',
+				text: i18n.ts._mkgoBubbleGame.saveDiscardedExpired,
+			});
+		} else if (save.v !== DropAndFusionGame.VERSION) {
+			// **版が違う保存は再開しない。** エンジンが変わると同じ記録でも結果が
+			// 変わるので、中断前とは別の盤面になる。
+			clearDropAndFusionSave(gameMode.value);
+			await os.alert({
+				type: 'info',
+				text: i18n.ts._mkgoBubbleGame.saveDiscardedVersion,
+			});
+		} else {
+			const { canceled, result } = await os.actions({
+				type: 'question',
+				title: i18n.ts._mkgoBubbleGame.resumeTitle,
+				text: i18n.ts._mkgoBubbleGame.resumeText,
+				actions: [{
+					value: 'resume',
+					text: i18n.ts._mkgoBubbleGame.resumeContinue,
+					primary: true,
+				}, {
+					value: 'new',
+					text: i18n.ts._mkgoBubbleGame.resumeNew,
+				}] as const,
+			});
+			if (canceled) return;
+			if (result === 'resume') {
+				resume.value = save;
+			} else {
+				clearDropAndFusionSave(gameMode.value);
+			}
+		}
+	}
+
 	gameStarted.value = true;
 }
 

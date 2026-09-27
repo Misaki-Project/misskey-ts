@@ -14018,6 +14018,36 @@ export interface Locale extends ILocale {
          */
         "importAndReact": string;
     };
+    "_mkgoBubbleGame": {
+        /**
+         * 中断したゲームがあります
+         */
+        "resumeTitle": string;
+        /**
+         * 続きから再開しますか？最初から始めると、中断したゲームは消えます。
+         */
+        "resumeText": string;
+        /**
+         * 続きから
+         */
+        "resumeContinue": string;
+        /**
+         * 最初から
+         */
+        "resumeNew": string;
+        /**
+         * 再開しています
+         */
+        "resuming": string;
+        /**
+         * ゲームが更新されたため、中断したゲームは再開できません。最初から始めます。
+         */
+        "saveDiscardedVersion": string;
+        /**
+         * 中断してから時間が経ちすぎたため、中断したゲームは再開できません。最初から始めます。
+         */
+        "saveDiscardedExpired": string;
+    };
     "_mkgoNotification": {
         /**
          * 絵文字 :{name}: の登録申請が届きました

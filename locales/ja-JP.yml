@@ -4024,3 +4024,8 @@ _emojiApplication:
   matchedByRemoteSource: "取り込み元が同じ"
   matchedByFileHash: "画像が同じ"
   rejectReasonRequired: "却下の理由を入力してください。申請者にはこの文面しか届きません。"
+_mkgoAdminWarnings:
+  hiddenCount: "非表示にした警告が{n}件あります。"
+  showHidden: "再表示"
+  saveFailed: "警告の表示状態を保存できませんでした。"
+  singleUserModeEffect: "有効にすると、コントロールパネルに設定の警告（管理者情報・問い合わせ先・Botプロテクション・メールサーバー）を出さなくなります。そのほかの動作は変わりません。"

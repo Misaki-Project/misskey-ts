@@ -3767,6 +3767,8 @@ _mkgoNotification:
   openModeration: "通報を確認"
   abuseReportResolved: "対処済み"
   abuseReportResolvedBySomeone: "他のモデレーターが対処しました"
+  abuseReportUnresolvedCount: "未対応 {n} 件"
+  openUnresolvedReports: "未対応の通報を一覧で見る"
   emojiApplicationApproved: "絵文字 :{name}: の申請が承認されました"
   emojiApplicationRejected: "絵文字 :{name}: の申請は却下されました"
   unknownType: "通知 ({type})"

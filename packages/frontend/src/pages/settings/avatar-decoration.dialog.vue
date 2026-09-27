@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 <MkModalWindow
 	ref="dialog"
 	:width="400"
-	:height="450"
+	:height="560"
 	@close="cancel"
 	@closed="emit('closed')"
 >
@@ -15,7 +15,13 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 	<div>
 		<div class="_spacer" style="--MI_SPACER-min: 20px; --MI_SPACER-max: 28px;">
-			<div style="text-align: center;">
+			<!--
+				**プレビューはスクロールしても上に残す (#3188)。** スライダーを動かして
+				結果を見る画面なので、スクロールで流れると調整中に結果が見えない。
+				高さを上げても、窓の低い PC やスマートフォンのドロワー (高さ固定) では
+				スクロールが残る。
+			-->
+			<div :class="$style.preview">
 				<div :class="$style.name">{{ decoration.name }}</div>
 				<MkAvatar style="width: 64px; height: 64px; margin-bottom: 20px;" :user="$i" :decorations="decorationsForPreview" forceShowDecoration/>
 			</div>
@@ -166,6 +172,16 @@ async function detach() {
 </script>
 
 <style lang="scss" module>
+.preview {
+	position: sticky;
+	top: 0;
+	// 下を流れるスライダーより前に出す。`.name` の z-index (10) より上。
+	z-index: 11;
+	text-align: center;
+	// 塗らないとスライダーが透ける。スクロール領域 (MkModalWindow の .body) と同じ色。
+	background: var(--MI_THEME-bg);
+}
+
 .name {
 	position: relative;
 	z-index: 10;

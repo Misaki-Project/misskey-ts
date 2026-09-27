@@ -105,7 +105,11 @@ const {
 		{ label: 'SQUARE', value: 'square' },
 		{ label: 'YEN', value: 'yen' },
 		{ label: 'SWEETS', value: 'sweets' },
-		//{ label: 'SPACE', value: 'space' },
+		// mk-go (#3194): SPACE は本家がメニューから外していた。はみ出しの判定の猶予
+		// (#3193) と、玉が箱の外へ出ないようにした壁で遊べるようになった。BOUNCY は
+		// mk-go 独自。
+		{ label: 'SPACE', value: 'space' },
+		{ label: 'BOUNCY', value: 'bouncy' },
 	],
 	initialValue: 'normal',
 });
@@ -123,6 +127,7 @@ function getScoreUnit(gameMode: string) {
 		gameMode === 'yen' ? '円' :
 		gameMode === 'sweets' ? 'kcal' :
 		gameMode === 'space' ? 'pt' :
+		gameMode === 'bouncy' ? 'pt' :
 		'' as never;
 }
 

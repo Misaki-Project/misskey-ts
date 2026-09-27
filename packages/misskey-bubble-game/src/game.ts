@@ -67,6 +67,10 @@ export class DropAndFusionGame extends EventEmitter<{
 	 */
 	public readonly OVERFLOW_GRACE_MS = 2000;
 	private WALL_THICKNESS = 100;
+	// mk-go (#3194): bouncy / space で左右の壁を上へ伸ばす高さ。理由は constructor の
+	// 壁の組み立てを参照。space は空気抵抗が 0 で重力が弱いので、玉が上へ弾かれると
+	// 高く上がる (上向きの速さ 5.34 で約 3800。実際のプレイで出た最大値)。余裕を持たせる。
+	private CONTAINING_WALL_EXTRA_HEIGHT = 6000;
 	private TICK_DELTA = 1000 / 60; // 60fps
 
 	public frame = 0;
@@ -74,7 +78,7 @@ export class DropAndFusionGame extends EventEmitter<{
 	private tickCallbackQueue: { frame: number; callback: () => void; }[] = [];
 	private overflowCollider: Matter.Body;
 	private isGameOver = false;
-	private gameMode: 'normal' | 'yen' | 'square' | 'sweets' | 'space';
+	private gameMode: 'normal' | 'yen' | 'square' | 'sweets' | 'space' | 'bouncy';
 	private rng: () => number;
 	private logs: Log[] = [];
 
@@ -109,6 +113,7 @@ export class DropAndFusionGame extends EventEmitter<{
 			case 'square': return SQUARE_MONOS;
 			case 'sweets': return SWEETS_MONOS;
 			case 'space': return NORAML_MONOS;
+			case 'bouncy': return NORAML_MONOS;
 		}
 	}
 
@@ -179,11 +184,27 @@ export class DropAndFusionGame extends EventEmitter<{
 			},
 		};
 
+		// mk-go (#3194): bouncy / space は左右の壁を上へ伸ばし (見えない)、下の角を塞ぐ。
+		// はみ出しの判定に猶予がある (#3193) と、漂う玉 (space) は壁の上を越え、よく弾む
+		// 玉 (bouncy) は挟まれて角から押し出され、どちらも箱の外へ出て消えたままゲームが
+		// 続く。**既存のモードは変えない** — 壁の形が変わると、同じ記録でも結末が変わる
+		// (版 4 のリプレイと途中保存が別の盤面になる)。内側の面は同じ。
+		// 各対策を外すと流出が再発することは実測で確かめた (壁の厚さは効かなかったので
+		// 本家のまま)。
+		// **角も塞ぐ。** 本家の床は GAME_WIDTH の幅しか無く、左右の壁は床の上面の高さで
+		// 終わっているので、壁の下・床の外 (左下 / 右下の角の外側) に隙間がある。挟まれた
+		// 玉はそこから抜けていた (実測: (-94, 712) で消えた)。床を壁の外まで広げ、壁を
+		// 床の下まで伸ばす。
+		const containsEscapes = this.gameMode === 'bouncy' || this.gameMode === 'space';
 		const thickness = this.WALL_THICKNESS;
+		const wallTop = containsEscapes ? -this.CONTAINING_WALL_EXTRA_HEIGHT : 0;
+		const wallBottom = containsEscapes ? this.GAME_HEIGHT + thickness : this.GAME_HEIGHT;
+		// 床は壁の外側の面まで。はみ出させると、壁の外に玉が載る段差ができる。
+		const floorWidth = containsEscapes ? this.GAME_WIDTH + ((thickness - this.PLAYAREA_MARGIN) * 2) : this.GAME_WIDTH;
 		Matter.Composite.add(this.engine.world, [
-			Matter.Bodies.rectangle(this.GAME_WIDTH / 2, this.GAME_HEIGHT + (thickness / 2) - this.PLAYAREA_MARGIN, this.GAME_WIDTH, thickness, WALL_OPTIONS),
-			Matter.Bodies.rectangle(this.GAME_WIDTH + (thickness / 2) - this.PLAYAREA_MARGIN, this.GAME_HEIGHT / 2, thickness, this.GAME_HEIGHT, WALL_OPTIONS),
-			Matter.Bodies.rectangle(-((thickness / 2) - this.PLAYAREA_MARGIN), this.GAME_HEIGHT / 2, thickness, this.GAME_HEIGHT, WALL_OPTIONS),
+			Matter.Bodies.rectangle(this.GAME_WIDTH / 2, this.GAME_HEIGHT + (thickness / 2) - this.PLAYAREA_MARGIN, floorWidth, thickness, WALL_OPTIONS),
+			Matter.Bodies.rectangle(this.GAME_WIDTH + (thickness / 2) - this.PLAYAREA_MARGIN, (wallTop + wallBottom) / 2, thickness, wallBottom - wallTop, WALL_OPTIONS),
+			Matter.Bodies.rectangle(-((thickness / 2) - this.PLAYAREA_MARGIN), (wallTop + wallBottom) / 2, thickness, wallBottom - wallTop, WALL_OPTIONS),
 		]);
 		//#endregion
 
@@ -207,14 +228,48 @@ export class DropAndFusionGame extends EventEmitter<{
 		return frame * this.TICK_DELTA;
 	}
 
+	/**
+	 * Body physics for the BOUNCY mode (mk-go, #3194).
+	 *
+	 * 重力は通常のまま、玉の性質だけを変える。**空気抵抗は通常のまま** — 0 にすると
+	 * 玉がいつまでも止まらない。
+	 */
+	private static readonly BOUNCY_PHYSICS = {
+		restitution: 0.9,
+		friction: 0.01,
+		frictionStatic: 0,
+		// 速さの上限 (matter-js の velocity の単位。timeScale が 2 なので 1 tick に動く
+		// 距離はこの約 2 倍)。よく弾む玉は挟まれると 60 を超える速さで押し出され、その
+		// 勢いのまま壁の中を進んで抜ける。normal の最大は実測 13.2 (同じ単位) なので、
+		// 普通の動きには効かない値にしてある。
+		maxSpeed: 15,
+		// ほぼ止まっている玉に当たったときの跳ね返りを補う相手の速さの上限。物理エンジンは
+		// 積み重なった玉への衝突で勢いを下の玉と床へ逃がすので、落ちている玉に当たっても
+		// ほとんど跳ねない (実測: 同じ玉が床で 169px 跳ねるのに、玉の上では 1px に満たない。
+		// 弾みを上げても玉の上は伸びない)。止まっている玉を床と同じ「動かない相手」とみなして補う。
+		// 単位は maxSpeed と同じ (tick 後の velocity)。
+		restingSpeed: 0.75,
+		// 補う量の係数。目標は「近づいた速さ x 弾み x この係数」の離れる速さ。玉の上で床より
+		// 少し高く跳ねるくらいを、実際に遊んで決めた (同じ玉で 1.0 なら 157px / 1.2 で 219px /
+		// 1.4 で 283px、床は 169px)。
+		assistRatio: 1.2,
+	};
+
+	/**
+	 * Collisions of the BOUNCY mode with a (nearly) resting mono, to be given a
+	 * proper rebound after the engine update (mk-go, #3194).
+	 */
+	private bounceAssists: { mover: Matter.Body; other: Matter.Body; nx: number; ny: number; approach: number }[] = [];
+
 	private createBody(mono: Mono, x: number, y: number) {
+		const bouncy = this.gameMode === 'bouncy';
 		const options = {
 			label: mono.id,
 			density: this.gameMode === 'space' ? 0.01 : ((mono.sizeX * mono.sizeY) / 10000),
-			restitution: this.gameMode === 'space' ? 0.5 : 0.2,
+			restitution: this.gameMode === 'space' ? 0.5 : bouncy ? DropAndFusionGame.BOUNCY_PHYSICS.restitution : 0.2,
 			frictionAir: this.gameMode === 'space' ? 0 : 0.01,
-			friction: this.gameMode === 'space' ? 0.5 : 0.7,
-			frictionStatic: this.gameMode === 'space' ? 0 : 5,
+			friction: this.gameMode === 'space' ? 0.5 : bouncy ? DropAndFusionGame.BOUNCY_PHYSICS.friction : 0.7,
+			frictionStatic: this.gameMode === 'space' ? 0 : bouncy ? DropAndFusionGame.BOUNCY_PHYSICS.frictionStatic : 5,
 			slop: this.gameMode === 'space' ? 0.01 : 0.7,
 			//mass: 0,
 			render: this.getMonoRenderOptions ? this.getMonoRenderOptions(mono) : undefined,
@@ -309,11 +364,81 @@ export class DropAndFusionGame extends EventEmitter<{
 				if (bodyA.label === '_overflow_' || bodyB.label === '_overflow_') continue;
 
 				if (bodyA.label !== '_wall_' && bodyB.label !== '_wall_') {
+					this.recordBounceAssist(bodyA.parent, bodyB.parent);
+				}
+
+				if (bodyA.label !== '_wall_' && bodyB.label !== '_wall_') {
 					if (!this.gameOverReadyBodyIds.includes(bodyA.id)) this.gameOverReadyBodyIds.push(bodyA.id);
 					if (!this.gameOverReadyBodyIds.includes(bodyB.id)) this.gameOverReadyBodyIds.push(bodyB.id);
 				}
 
 				this.emit('collision', energy, bodyA, bodyB);
+			}
+		}
+	}
+
+	private recordBounceAssist(a: Matter.Body, b: Matter.Body) {
+		// bouncy だけ。**条件はここ 1 か所** — 適用 (tick) はモードを見ずに毎回呼ぶ。
+		if (this.gameMode !== 'bouncy') return;
+		// **単位を tick 後に揃える。** 衝突の通知は Engine.update の途中 (位置を進めた直後) に
+		// 来るので、ここの velocity は 1 step の移動量で、tick 後の値 (applyBounceAssists と
+		// limitSpeed が読む) の timeScale 倍になっている。揃えないと近づく速さを 2 倍に
+		// 見積もり、跳ね返りが元の速さを上回る。
+		const scale = 1 / this.engine.timing.timeScale;
+		const va = { x: a.velocity.x * scale, y: a.velocity.y * scale };
+		const vb = { x: b.velocity.x * scale, y: b.velocity.y * scale };
+		const speedA = Math.sqrt((va.x * va.x) + (va.y * va.y));
+		const speedB = Math.sqrt((vb.x * vb.x) + (vb.y * vb.y));
+		const [mover, other, vm, vo] = speedA >= speedB ? [a, b, va, vb] : [b, a, vb, va];
+		if (Math.min(speedA, speedB) > DropAndFusionGame.BOUNCY_PHYSICS.restingSpeed) return;
+		const dx = other.position.x - mover.position.x;
+		const dy = other.position.y - mover.position.y;
+		const d = Math.sqrt((dx * dx) + (dy * dy));
+		if (d === 0) return;
+		const nx = dx / d;
+		const ny = dy / d;
+		// 衝突の瞬間 (まだ解決前) に近づいていた速さ。
+		const approach = ((vm.x - vo.x) * nx) + ((vm.y - vo.y) * ny);
+		if (approach <= 0) return;
+		this.bounceAssists.push({ mover, other, nx, ny, approach });
+	}
+
+	/**
+	 * Gives a mono that hit a resting mono about the rebound it would get from the
+	 * floor (mk-go, #3194). 物理エンジンが解決した後に離れていく速さが、近づいた速さ x
+	 * 弾みに届かなければ、その差を動いていた側に足す。記録順に処理するので決定的。
+	 */
+	private applyBounceAssists() {
+		const assists = this.bounceAssists;
+		if (assists.length === 0) return;
+		this.bounceAssists = [];
+		const alive = new Set(this.engine.world.bodies.map(b => b.id));
+		for (const { mover, other, nx, ny, approach } of assists) {
+			// 合体で消えた玉は対象外。
+			if (!alive.has(mover.id) || !alive.has(other.id)) continue;
+			// 動いていた側**自身**の離れる速さで見る (当てられた相手の動きに左右されない)。
+			const separating = -((mover.velocity.x * nx) + (mover.velocity.y * ny));
+			const wanted = approach * DropAndFusionGame.BOUNCY_PHYSICS.restitution * DropAndFusionGame.BOUNCY_PHYSICS.assistRatio;
+			if (separating >= wanted) continue;
+			const add = wanted - separating;
+			Matter.Body.setVelocity(mover, {
+				x: mover.velocity.x - (nx * add),
+				y: mover.velocity.y - (ny * add),
+			});
+		}
+	}
+
+	private limitSpeed(maxSpeed: number) {
+		for (const b of this.engine.world.bodies) {
+			if (b.isStatic) continue;
+			// Math.hypot は丸めがエンジンごとに違いうる (仕様が正確な丸めを要求しない)。
+			// リプレイの結末がブラウザで変わらないよう、sqrt で計算する。
+			const speed = Math.sqrt((b.velocity.x * b.velocity.x) + (b.velocity.y * b.velocity.y));
+			if (speed > maxSpeed) {
+				Matter.Body.setVelocity(b, {
+					x: b.velocity.x * (maxSpeed / speed),
+					y: b.velocity.y * (maxSpeed / speed),
+				});
 			}
 		}
 	}
@@ -435,6 +560,10 @@ export class DropAndFusionGame extends EventEmitter<{
 		});
 
 		Matter.Engine.update(this.engine, this.TICK_DELTA);
+
+		// 記録は bouncy のときだけ (recordBounceAssist)。ほかのモードでは空なので何も起きない。
+		this.applyBounceAssists();
+		if (this.gameMode === 'bouncy') this.limitSpeed(DropAndFusionGame.BOUNCY_PHYSICS.maxSpeed);
 
 		if (!this.isGameOver) this.checkOverflow();
 

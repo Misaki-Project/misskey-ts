@@ -208,6 +208,16 @@ SPDX-License-Identifier: AGPL-3.0-only
 			</MkA>
 			<template v-else-if="notification.type === 'follow'">
 				<span :class="$style.text" style="opacity: 0.6;">{{ i18n.ts.youGotNewFollower }}</span>
+				<!--
+					mk-go (#3185): フォローされた通知からそのままフォローを返す。フォロー申請の
+					承認 / 拒否と同じく full のときだけ出す。**フォロー中なら文字だけ**
+					(disableIfFollowing) — ボタンのままだと押してフォロー解除に進む。
+					`user` は UserLite で `isFollowing` を持たないので、ボタンが users/show で
+					補う (通知 1 件につき 1 回。CherryPick と同じ形)。
+				-->
+				<div v-if="full" :class="$style.followRequestCommands">
+					<MkFollowButton :user="notification.user as Misskey.entities.UserDetailed" full disableIfFollowing/>
+				</div>
 			</template>
 			<template v-else-if="notification.type === 'followRequestAccepted'">
 				<div :class="$style.text" style="opacity: 0.6;">{{ i18n.ts.followRequestAccepted }}</div>
@@ -287,6 +297,7 @@ import { ref } from 'vue';
 import * as Misskey from 'misskey-js';
 import MkReactionIcon from '@/components/MkReactionIcon.vue';
 import MkButton from '@/components/MkButton.vue';
+import MkFollowButton from '@/components/MkFollowButton.vue';
 import { getNoteSummary } from '@/utility/get-note-summary.js';
 import { notePage } from '@/filters/note.js';
 import { userPage } from '@/filters/user.js';

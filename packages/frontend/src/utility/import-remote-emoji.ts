@@ -8,6 +8,7 @@ import * as os from '@/os.js';
 import { misskeyApi } from '@/utility/misskey-api.js';
 import { i18n } from '@/i18n.js';
 import { customEmojisMap } from '@/custom-emojis.js';
+import { $i } from '@/i.js';
 
 export type RemoteEmojiMeta = {
 	fetched: boolean;
@@ -66,10 +67,19 @@ export function hasLocalEmojiWithSameName(name: string): boolean {
 	return bare !== '' && customEmojisMap.has(bare);
 }
 
-export async function importRemoteEmoji(name: string, host: string | null | undefined): Promise<void> {
-	if (name === '' || host == null || host === '' || host === '.') return;
+/**
+ * Opens the import dialog for a remote emoji and resolves with the name it was
+ * saved under, or `null` when nothing was imported (closed, failed, or bad
+ * arguments).
+ *
+ * **ダイアログが閉じるまで待つ (#3187)。** 取り込んだ絵文字でそのままリアクション
+ * する導線が、確定した名前を要る。名前は取り込み時に直せる (#2998) ので、呼び出し側が
+ * 渡した名前を使うと別の絵文字を指す。
+ */
+export async function importRemoteEmoji(name: string, host: string | null | undefined): Promise<string | null> {
+	if (name === '' || host == null || host === '' || host === '.') return null;
 	const bare = bareEmojiName(name);
-	if (bare === '') return;
+	if (bare === '') return null;
 
 	// **取得に失敗しても id と画像 URL は返る**ので、そのままモーダルを開いて
 	// 手で埋めてもらう。ここで弾くと「取り込めない絵文字」ができてしまう。
@@ -78,19 +88,58 @@ export async function importRemoteEmoji(name: string, host: string | null | unde
 		res = await api<RemoteEmojiMeta>('admin/emoji/fetch-remote-meta', { name: bare, host });
 	} catch {
 		os.alert({ type: 'error', text: i18n.ts.somethingHappened });
-		return;
+		return null;
 	}
 
-	const { dispose } = os.popup(defineAsyncComponent(() => import('@/components/MkRemoteEmojiEditDialog.vue')), {
-		emoji: {
-			id: res.emojiId,
-			name: res.name,
-			host: res.host,
-			license: res.license ?? null,
-			url: res.originalUrl,
-		},
-		meta: res,
-	}, {
-		closed: () => dispose(),
+	return new Promise((resolve) => {
+		let imported: string | null = null;
+		const { dispose } = os.popup(defineAsyncComponent(() => import('@/components/MkRemoteEmojiEditDialog.vue')), {
+			emoji: {
+				id: res.emojiId,
+				name: res.name,
+				host: res.host,
+				license: res.license ?? null,
+				url: res.originalUrl,
+			},
+			meta: res,
+		}, {
+			done: (saved: string) => {
+				imported = saved;
+			},
+			// **閉じた時点で決着させる。** done は閉じる前に来るので、閉じただけ
+			// (取り消し) なら null のまま返る。
+			closed: () => {
+				dispose();
+				resolve(imported);
+			},
+		});
 	});
+}
+
+/**
+ * Whether the signed-in user can import remote emojis directly (as opposed to
+ * only requesting an import).
+ *
+ * #3187 の「インポートしてリアクション」は**取り込めるときだけ**出す。申請はすぐには
+ * 通らないので、申請しかできない人に出すとリアクションできないまま終わる。
+ */
+export function canImportRemoteEmoji(): boolean {
+	return $i != null && ($i.isModerator || $i.policies.canManageCustomEmojis);
+}
+
+/**
+ * Imports a remote emoji and reacts with it once the import is done (#3187).
+ *
+ * 送るのは `:name@.:`。**frontend の絵文字一覧の更新を待たない** — backend は
+ * リアクションの解決でキャッシュを通さず DB を引く (`FindByNameAndHost`) ので、
+ * 取り込み直後でも解決できる。取り消し / 失敗ではリアクションしない。
+ */
+export async function importRemoteEmojiAndReact(
+	name: string,
+	host: string | null | undefined,
+	react: (reaction: string) => void | Promise<void>,
+): Promise<void> {
+	const saved = await importRemoteEmoji(name, host);
+	if (saved == null || saved === '') return;
+	await react(`:${saved}@.:`);
 }

@@ -3755,6 +3755,8 @@ _mkgoAvatarDecoration:
   sensitiveEmojiNotAllowed: "センシティブな絵文字はアイコンに重ねられません。"
   emojiDisabledButWorn: "ロールの設定でカスタム絵文字のデコレーションが使えなくなっていますが、{n}個装着したままです。外すまで他のデコレーションも変更できません。上の「使用中」から選んで解除してください。"
 
+_mkgoEmoji:
+  importAndReact: "インポートしてリアクション"
 _mkgoNotification:
   emojiApplicationReceived: "絵文字 :{name}: の登録申請が届きました"
   emojiApplicationReceivedLabel: "絵文字の登録申請"

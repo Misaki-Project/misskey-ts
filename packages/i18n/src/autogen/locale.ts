@@ -15038,4 +15038,22 @@ export interface Locale extends ILocale {
          */
         "rejectReasonRequired": string;
     };
+    "_mkgoAdminWarnings": {
+        /**
+         * 非表示にした警告が{n}件あります。
+         */
+        "hiddenCount": ParameterizedString<"n">;
+        /**
+         * 再表示
+         */
+        "showHidden": string;
+        /**
+         * 警告の表示状態を保存できませんでした。
+         */
+        "saveFailed": string;
+        /**
+         * 有効にすると、コントロールパネルに設定の警告（管理者情報・問い合わせ先・Botプロテクション・メールサーバー）を出さなくなります。そのほかの動作は変わりません。
+         */
+        "singleUserModeEffect": string;
+    };
 }

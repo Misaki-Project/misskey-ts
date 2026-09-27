@@ -14,10 +14,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 				<div class="_gaps_s">
 					<MkInfo v-if="thereIsUnresolvedAbuseReport" warn>{{ i18n.ts.thereIsUnresolvedAbuseReportWarning }} <MkA to="/admin/abuses" class="_link">{{ i18n.ts.check }}</MkA></MkInfo>
-					<MkInfo v-if="noMaintainerInformation" warn>{{ i18n.ts.noMaintainerInformationWarning }} <MkA to="/admin/settings" class="_link">{{ i18n.ts.configure }}</MkA></MkInfo>
-					<MkInfo v-if="noInquiryUrl" warn>{{ i18n.ts.noInquiryUrlWarning }} <MkA to="/admin/settings" class="_link">{{ i18n.ts.configure }}</MkA></MkInfo>
-					<MkInfo v-if="noBotProtection" warn>{{ i18n.ts.noBotProtectionWarning }} <MkA to="/admin/security" class="_link">{{ i18n.ts.configure }}</MkA></MkInfo>
-					<MkInfo v-if="noEmailServer" warn>{{ i18n.ts.noEmailServerWarning }} <MkA to="/admin/email-settings" class="_link">{{ i18n.ts.configure }}</MkA></MkInfo>
+					<MkInfo v-for="id in settingWarnings.visible" :key="id" warn :closable="canDismissWarnings" @close="dismissWarning(id)">{{ settingWarningDefs[id].text }} <MkA :to="settingWarningDefs[id].to" class="_link">{{ i18n.ts.configure }}</MkA></MkInfo>
+					<div v-if="settingWarnings.hidden.length > 0" :class="$style.hiddenWarnings">{{ i18n.tsx._mkgoAdminWarnings.hiddenCount({ n: settingWarnings.hidden.length }) }} <button class="_textButton" @click="restoreWarnings()">{{ i18n.ts._mkgoAdminWarnings.showHidden }}</button></div>
 				</div>
 
 				<MkSuperMenu :def="menuDef" :searchIndex="searchIndex" :grid="narrow"></MkSuperMenu>
@@ -49,6 +47,8 @@ import { lookup } from '@/utility/lookup.js';
 import * as os from '@/os.js';
 import { misskeyApi } from '@/utility/misskey-api.js';
 import { lookupUser, lookupUserByEmail, lookupFile } from '@/utility/admin-lookup.js';
+import { classifySettingWarnings, knownSingleUserMode, lacksBotProtection, loadDismissedWarnings, updateDismissedWarnings } from '@/utility/admin-setting-warnings.js';
+import type { SettingWarningId } from '@/utility/admin-setting-warnings.js';
 import { definePage, provideMetadataReceiver, provideReactiveMetadata } from '@/page.js';
 import { useRouter } from '@/router.js';
 import { genSearchIndexes } from '@/utility/inapp-search.js';
@@ -74,10 +74,83 @@ const view = ref(null);
 const el = ref<HTMLDivElement | null>(null);
 const pageProps = ref({});
 const noMaintainerInformation = computed(() => isEmpty(instance.maintainerName) || isEmpty(instance.maintainerEmail));
-const noBotProtection = computed(() => !instance.disableRegistration && !instance.enableHcaptcha && !instance.enableRecaptcha && !instance.enableTurnstile && !instance.enableMcaptcha);
+// instance をそのまま渡す。承認制の値を別に取って上書きすると、設定を変えた直後に古い値で判定する。
+const noBotProtection = computed(() => lacksBotProtection(instance));
 const noEmailServer = computed(() => !instance.enableEmail);
 const noInquiryUrl = computed(() => isEmpty(instance.inquiryUrl));
 const thereIsUnresolvedAbuseReport = ref(false);
+
+// 設定の警告 (#3190)。お一人様モードかどうかは公開の /api/meta に無いので admin/meta から取る
+// (ページに埋め込む meta には載っているが、fetchInstance で更新されず読み込み時点の値のまま)。
+// 取れるまでは出さない — 出してから消えると、お一人様サーバーで毎回ちらつく。
+const settingWarningDefs: Record<SettingWarningId, { text: string; to: string }> = {
+	maintainer: { text: i18n.ts.noMaintainerInformationWarning, to: '/admin/settings' },
+	inquiryUrl: { text: i18n.ts.noInquiryUrlWarning, to: '/admin/settings' },
+	botProtection: { text: i18n.ts.noBotProtectionWarning, to: '/admin/security' },
+	emailServer: { text: i18n.ts.noEmailServerWarning, to: '/admin/email-settings' },
+};
+const settingWarningsLoaded = ref(false);
+// null: 読めなかった。このときは閉じるボタンを出さない (保存すると既存の非表示を消しうる)。
+const dismissedWarnings = ref<SettingWarningId[] | null>([]);
+const settingWarnings = computed(() => {
+	if (!settingWarningsLoaded.value) return { visible: [], hidden: [] };
+	return classifySettingWarnings({
+		active: {
+			maintainer: noMaintainerInformation.value,
+			inquiryUrl: noInquiryUrl.value,
+			botProtection: noBotProtection.value,
+			emailServer: noEmailServer.value,
+		},
+		// admin/meta は管理者専用なので、モデレーターには取れない。そのときはお一人様モード
+		// ではないとみなす (警告が出るほうに倒す)。
+		singleUserMode: knownSingleUserMode.value === true,
+		dismissed: dismissedWarnings.value ?? [],
+	});
+});
+const canDismissWarnings = computed(() => dismissedWarnings.value != null);
+
+Promise.all([
+	misskeyApi('admin/meta').then(meta => {
+		knownSingleUserMode.value = meta.singleUserMode;
+	}, () => {}),
+	loadDismissedWarnings().then(ids => {
+		dismissedWarnings.value = ids;
+	}),
+]).then(() => {
+	settingWarningsLoaded.value = true;
+});
+
+let savingDismissedWarnings = 0;
+
+function changeDismissedWarnings(op: (current: SettingWarningId[]) => SettingWarningId[]) {
+	if (dismissedWarnings.value == null) return;
+	// 押した直後に反映し、保存が終わったらサーバーの値に合わせる (別の端末の分も入る)。
+	// 合わせるのは最後の保存が終わったときだけ — 途中で合わせると、後に押した分が一瞬戻る。
+	dismissedWarnings.value = op(dismissedWarnings.value);
+	savingDismissedWarnings++;
+	updateDismissedWarnings(op).then(saved => {
+		if (--savingDismissedWarnings === 0) dismissedWarnings.value = saved;
+	}, async () => {
+		savingDismissedWarnings--;
+		os.alert({ type: 'error', text: i18n.ts._mkgoAdminWarnings.saveFailed });
+		if (savingDismissedWarnings !== 0) return;
+		const reloaded = await loadDismissedWarnings();
+		// 読み直している間に次の保存が始まっていたら、そちらの結果に任せる (古い値で上書きしない)。
+		if (savingDismissedWarnings === 0) dismissedWarnings.value = reloaded;
+	});
+}
+
+function dismissWarning(id: SettingWarningId) {
+	changeDismissedWarnings(current => current.includes(id) ? current : [...current, id]);
+}
+
+// 再表示するのは、いま条件を満たしていて隠れているものだけ。条件を満たしていないものまで
+// 戻すと、後で設定を外したときに意図に反して出てくる。
+function restoreWarnings() {
+	const restoring = settingWarnings.value.hidden;
+	changeDismissedWarnings(current => current.filter(id => !restoring.includes(id)));
+}
+
 const currentPage = computed(() => router.currentRef.value.child);
 
 // IP からの関連アカウント検索 (#3104) を出せるか。既定は管理者のみで、
@@ -427,5 +500,13 @@ definePage(() => INFO.value);
 			}
 		}
 	}
+}
+</style>
+
+<style lang="scss" module>
+.hiddenWarnings {
+	font-size: 85%;
+	opacity: 0.7;
+	text-align: center;
 }
 </style>

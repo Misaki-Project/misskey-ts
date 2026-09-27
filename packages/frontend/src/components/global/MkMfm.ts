@@ -443,7 +443,10 @@ export default function (props: MfmProps, { emit }: { emit: SetupContext<MfmEven
 							host: props.author.host,
 							useOriginalSize: scale >= 2.5,
 							menu: props.enableEmojiMenu,
-							menuReaction: false,
+							// mk-go (#3187): リモートの絵文字にもリアクションの可否を渡す。
+							// そのまま `:name:` で送ると別の絵文字を指すので、MkCustomEmoji 側で
+							// 「同名のローカル絵文字」か「取り込んでから」に限る。
+							menuReaction: props.enableEmojiMenuReaction,
 						})];
 					}
 				}

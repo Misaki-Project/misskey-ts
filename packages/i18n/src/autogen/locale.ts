@@ -14012,6 +14012,12 @@ export interface Locale extends ILocale {
          */
         "emojiDisabledButWorn": ParameterizedString<"n">;
     };
+    "_mkgoEmoji": {
+        /**
+         * インポートしてリアクション
+         */
+        "importAndReact": string;
+    };
     "_mkgoNotification": {
         /**
          * 絵文字 :{name}: の登録申請が届きました

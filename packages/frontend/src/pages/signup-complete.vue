@@ -30,6 +30,7 @@ import { i18n } from '@/i18n.js';
 import * as os from '@/os.js';
 import { misskeyApi } from '@/utility/misskey-api.js';
 import { login } from '@/accounts.js';
+import { isRegistrationClosedError } from '@/utility/registration-mode.js';
 
 const submitting = ref(false);
 
@@ -45,13 +46,15 @@ function submit() {
 		code: props.code,
 	}).then(res => {
 		return login(res.i, '/');
-	}).catch(() => {
+	}).catch((err) => {
 		submitting.value = false;
 
+		// mk-go: 受け付けていない間は確認の完了も止まる (#3186)。確認に失敗したと
+		// 出すと、リンクが壊れていると読まれる。記録は残るので再開後にもう一度押せばよい。
 		os.alert({
 			type: 'error',
 			title: i18n.ts.somethingHappened,
-			text: i18n.ts.emailVerificationFailedError,
+			text: isRegistrationClosedError(err) ? i18n.ts._mkgoRegistration.closedNotice : i18n.ts.emailVerificationFailedError,
 		});
 	});
 }

@@ -52,6 +52,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 				ところに並べて注意書きを添える。host は共有して、調べている相手を
 				タブ間で持ち越す。
 			-->
+			<!-- 消えたサーバーとのフォロー関係の片付け (mk-go #3067)。 -->
+			<XFederationGone v-else-if="tab === 'gone'"/>
 			<XFederationHealth v-else :key="tab" v-model:host="host" :direction="tab"/>
 		</div>
 	</div>
@@ -67,13 +69,14 @@ import MkPagination from '@/components/MkPagination.vue';
 import MkInstanceCardMini from '@/components/MkInstanceCardMini.vue';
 import MkPluginSlot from '@/components/MkPluginSlot.vue';
 import XFederationHealth from '@/pages/admin/federation.health.vue';
+import XFederationGone from '@/pages/admin/federation.gone.vue';
 import FormSplit from '@/components/form/split.vue';
 import { i18n } from '@/i18n.js';
 import { definePage } from '@/page.js';
 import { useMkSelect } from '@/composables/use-mkselect.js';
 import { Paginator } from '@/utility/paginator.js';
 
-const tab = ref<'instances' | 'deliver' | 'inbox'>('instances');
+const tab = ref<'instances' | 'deliver' | 'inbox' | 'gone'>('instances');
 const host = ref('');
 const {
 	model: state,
@@ -160,6 +163,9 @@ const headerTabs = computed(() => [{
 }, {
 	key: 'inbox',
 	title: 'Inbox',
+}, {
+	key: 'gone',
+	title: i18n.ts._goneInstances.tab,
 }]);
 
 definePage(() => ({

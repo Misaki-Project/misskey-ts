@@ -9223,6 +9223,60 @@ export interface Locale extends ILocale {
             "processingError": string;
         };
     };
+    "_goneInstances": {
+        /**
+         * 消えたサーバー
+         */
+        "tab": string;
+        /**
+         * 共有の受け口が410を返し、もう存在しないと判定して配送を止めているサーバーです。そのサーバーの利用者とのフォロー関係は自動では消えないので、ここで片付けられます。
+         */
+        "description": string;
+        /**
+         * 消えたサーバーの一覧を取得できませんでした。この backend が対応していないか、権限がありません。
+         */
+        "unavailable": string;
+        /**
+         * 消えたサーバーはありません。
+         */
+        "none": string;
+        /**
+         * 消えたと判定した日時
+         */
+        "goneSince": string;
+        /**
+         * 不明
+         */
+        "unknown": string;
+        /**
+         * 相手からのフォロー{followers}件・相手へのフォロー{following}件・フォローリクエスト{requests}件
+         */
+        "relations": ParameterizedString<"followers" | "following" | "requests">;
+        /**
+         * フォロー関係を片付ける
+         */
+        "clean": string;
+        /**
+         * {host}の利用者とのフォロー関係を片付けますか？相手からのフォロー{followers}件と相手へのフォロー{following}件を解除し、フォローリクエスト{requests}件を消します。元に戻せません。利用者への通知やWebhookは出ません。
+         */
+        "cleanConfirm": ParameterizedString<"host" | "followers" | "following" | "requests">;
+        /**
+         * 片付けました（相手からのフォロー{followers}件・相手へのフォロー{following}件・フォローリクエスト{requests}件）
+         */
+        "cleaned": ParameterizedString<"followers" | "following" | "requests">;
+        /**
+         * まだ{n}件残っています。もう一度実行してください。
+         */
+        "remaining": ParameterizedString<"n">;
+        /**
+         * このサーバーはもう消えたサーバーとして扱われていません（配送停止の状態が変更されています）。途中まで片付けていた場合、その件数は監査ログに記録されています。一覧を読み直しました。
+         */
+        "notGone": string;
+        /**
+         * このサーバーの片付けは別の操作で実行中です。終わってから一覧を読み直してください。
+         */
+        "inProgress": string;
+    };
     "_federationCheck": {
         /**
          * 疎通の診断
@@ -12036,6 +12090,10 @@ export interface Locale extends ILocale {
          * 絵文字申請枠をリセット
          */
         "resetEmojiApplicationQuota": string;
+        /**
+         * 消えたサーバーとのフォロー関係を片付け
+         */
+        "cleanGoneInstance": string;
         /**
          * ジョブキューをクリア
          */

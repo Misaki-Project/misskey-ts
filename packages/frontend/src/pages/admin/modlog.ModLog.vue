@@ -57,6 +57,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 			「重ならない」と怒られる。
 		-->
 		<span v-else-if="(log.type as string) === 'resetEmojiApplicationQuota'">: {{ mkgoTargetAcct(log.info) }}</span>
+		<!-- mk-go 独自 (#3067)。どのホストとの関係を片付けたかを見出しに出す。 -->
+		<span v-else-if="(log.type as string) === 'cleanGoneInstance'">: {{ (log.info as { host?: string }).host }}</span>
 		<span v-else-if="log.type === 'assignRole'">: @{{ log.info.userUsername }}{{ log.info.userHost ? '@' + log.info.userHost : '' }} <i class="ti ti-arrow-right"></i> {{ log.info.roleName }}</span>
 		<span v-else-if="log.type === 'unassignRole'">: @{{ log.info.userUsername }}{{ log.info.userHost ? '@' + log.info.userHost : '' }} <i class="ti ti-equal-not"></i> {{ log.info.roleName }}</span>
 		<span v-else-if="log.type === 'createRole'">: {{ log.info.role.name }}</span>
@@ -100,6 +102,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 		<i v-else-if="log.type === 'unsuspend'" class="ti ti-user-check"></i>
 		<i v-else-if="log.type === 'resetPassword'" class="ti ti-key"></i>
 		<i v-else-if="(log.type as string) === 'resetEmojiApplicationQuota'" class="ti ti-icons"></i>
+		<i v-else-if="(log.type as string) === 'cleanGoneInstance'" class="ti ti-unlink"></i>
 		<i v-else-if="log.type === 'assignRole'" class="ti ti-user-plus"></i>
 		<i v-else-if="log.type === 'unassignRole'" class="ti ti-user-minus"></i>
 		<i v-else-if="log.type === 'createRole'" class="ti ti-plus"></i>

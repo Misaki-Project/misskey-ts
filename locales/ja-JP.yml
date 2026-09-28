@@ -2411,6 +2411,20 @@ _federationHealth:
     ldSignatureFailed: "LD-Signatureを検証できませんでした。"
     processingError: "処理中に失敗しました。再試行されます。"
 
+_goneInstances:
+  tab: "消えたサーバー"
+  description: "共有の受け口が410を返し、もう存在しないと判定して配送を止めているサーバーです。そのサーバーの利用者とのフォロー関係は自動では消えないので、ここで片付けられます。"
+  unavailable: "消えたサーバーの一覧を取得できませんでした。この backend が対応していないか、権限がありません。"
+  none: "消えたサーバーはありません。"
+  goneSince: "消えたと判定した日時"
+  unknown: "不明"
+  relations: "相手からのフォロー{followers}件・相手へのフォロー{following}件・フォローリクエスト{requests}件"
+  clean: "フォロー関係を片付ける"
+  cleanConfirm: "{host}の利用者とのフォロー関係を片付けますか？相手からのフォロー{followers}件と相手へのフォロー{following}件を解除し、フォローリクエスト{requests}件を消します。元に戻せません。利用者への通知やWebhookは出ません。"
+  cleaned: "片付けました（相手からのフォロー{followers}件・相手へのフォロー{following}件・フォローリクエスト{requests}件）"
+  remaining: "まだ{n}件残っています。もう一度実行してください。"
+  notGone: "このサーバーはもう消えたサーバーとして扱われていません（配送停止の状態が変更されています）。途中まで片付けていた場合、その件数は監査ログに記録されています。一覧を読み直しました。"
+  inProgress: "このサーバーの片付けは別の操作で実行中です。終わってから一覧を読み直してください。"
 _federationCheck:
   tab: "疎通の診断"
   description: "このサーバーから相手へ実際に接続して、連合に必要な窓口が応答するかを1回だけ確かめます。相手へ投稿や配送は送りません。"
@@ -3193,6 +3207,7 @@ _abuseReport:
 
 _moderationLogTypes:
   resetEmojiApplicationQuota: "絵文字申請枠をリセット"
+  cleanGoneInstance: "消えたサーバーとのフォロー関係を片付け"
   clearQueue: "ジョブキューをクリア"
   promoteQueue: "キューのジョブを再試行"
   createRole: "ロールを作成"

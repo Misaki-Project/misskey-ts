@@ -9101,6 +9101,62 @@ export interface Locale extends ILocale {
          */
         "evicted": ParameterizedString<"n">;
         /**
+         * 配送を止めている相手
+         */
+        "breakersTitle": string;
+        /**
+         * 停止中
+         */
+        "breakerOpen": string;
+        /**
+         * 間隔を空けている
+         */
+        "breakerThrottled": string;
+        /**
+         * 止めた時刻
+         */
+        "breakerOpenedAt": string;
+        /**
+         * 次に試す時刻
+         */
+        "breakerNextProbe": string;
+        /**
+         * 連続{failures}回失敗・{interval}ごとに試す
+         */
+        "breakerDetail": ParameterizedString<"failures" | "interval">;
+        /**
+         * 間隔を空ける期限
+         */
+        "breakerThrottledUntil": string;
+        /**
+         * 待たせた分を送っている
+         */
+        "breakerDraining": string;
+        /**
+         * 送り終わる見込み
+         */
+        "breakerReservedUntil": string;
+        /**
+         * 再開する
+         */
+        "breakerClose": string;
+        /**
+         * {host}への配送を再開しますか？待たせている配送は数分以内に送られます。相手がまだ応答しないか429を返せば、また止まります。
+         */
+        "breakerCloseConfirm": ParameterizedString<"host">;
+        /**
+         * 接続できないか5xxが続く相手への配送は止め、ときどき1件だけ試して、応答があれば自動で再開します。429を返した相手には指定された時間だけ配送を待たせ、明けたあとは待たせた分を間隔を空けて1件ずつ送ります。「再開する」で、待たせている配送をすぐに流せます。止めている間の配送は捨てずに待たせ、7日間応答が無ければ自動で配送停止になります。
+         */
+        "breakersNote": string;
+        /**
+         * {n}分
+         */
+        "minutes": ParameterizedString<"n">;
+        /**
+         * {n}時間
+         */
+        "hours": ParameterizedString<"n">;
+        /**
          * 連合先の名簿ではありません。この期間に配送した相手だけが出ます。沈黙している相手は現れないので、一覧に無いことは正常を意味しません。
          */
         "deliverNote": string;
@@ -9118,7 +9174,7 @@ export interface Locale extends ILocale {
              */
             "gone": string;
             /**
-             * 相手は健在で、流量を絞っているだけです。再送で吸収されます。
+             * 相手は健在で、流量を絞っているだけです。指定された間隔だけ、この相手への配送を待たせます。
              */
             "rateLimited": string;
             /**
@@ -9126,11 +9182,11 @@ export interface Locale extends ILocale {
              */
             "clientError": string;
             /**
-             * 相手側の一時障害です。再送します。続くようなら相手に連絡してください。
+             * 相手側の一時障害です。再送します。続くと配送を止め、ときどき試して復旧したら再開します。長引くようなら相手に連絡してください。
              */
             "serverError": string;
             /**
-             * HTTP応答に至っていません。DNS・TCP・TLS・タイムアウトのいずれかです。再送します。
+             * HTTP応答に至っていません。DNS・TCP・TLS・タイムアウトのいずれかです。再送します。続くと配送を止め、ときどき試して復旧したら再開します。
              */
             "transport": string;
             /**

@@ -54,6 +54,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 			-->
 			<!-- 消えたサーバーとのフォロー関係の片付け (mk-go #3067)。 -->
 			<XFederationGone v-else-if="tab === 'gone'"/>
+			<!-- 連合のルール (mk-go #3090)。 -->
+			<XFederationRules v-else-if="tab === 'rules'"/>
 			<XFederationHealth v-else :key="tab" v-model:host="host" :direction="tab"/>
 		</div>
 	</div>
@@ -70,13 +72,14 @@ import MkInstanceCardMini from '@/components/MkInstanceCardMini.vue';
 import MkPluginSlot from '@/components/MkPluginSlot.vue';
 import XFederationHealth from '@/pages/admin/federation.health.vue';
 import XFederationGone from '@/pages/admin/federation.gone.vue';
+import XFederationRules from '@/pages/admin/federation.rules.vue';
 import FormSplit from '@/components/form/split.vue';
 import { i18n } from '@/i18n.js';
 import { definePage } from '@/page.js';
 import { useMkSelect } from '@/composables/use-mkselect.js';
 import { Paginator } from '@/utility/paginator.js';
 
-const tab = ref<'instances' | 'deliver' | 'inbox' | 'gone'>('instances');
+const tab = ref<'instances' | 'deliver' | 'inbox' | 'gone' | 'rules'>('instances');
 const host = ref('');
 const {
 	model: state,
@@ -166,6 +169,9 @@ const headerTabs = computed(() => [{
 }, {
 	key: 'gone',
 	title: i18n.ts._goneInstances.tab,
+}, {
+	key: 'rules',
+	title: i18n.ts._federationRules.tab,
 }]);
 
 definePage(() => ({

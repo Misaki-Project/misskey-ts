@@ -9277,6 +9277,224 @@ export interface Locale extends ILocale {
          */
         "inProgress": string;
     };
+    "_federationRules": {
+        /**
+         * ルール
+         */
+        "tab": string;
+        /**
+         * 受信した投稿やactivityに、条件と動作の組を当てはめます。サーバー単位のブロックやサイレンスより細かい判断に使い、それらと併せて効きます。まず「記録だけ」で当たり具合を確かめてから「有効」にしてください。
+         */
+        "description": string;
+        /**
+         * ルールを取得できませんでした。このbackendが対応していないか、権限がありません。
+         */
+        "unavailable": string;
+        /**
+         * ルールはありません。
+         */
+        "none": string;
+        /**
+         * ルールの変更は管理者だけができます。
+         */
+        "readOnly": string;
+        /**
+         * ルールを追加
+         */
+        "add": string;
+        /**
+         * 名前のないルール
+         */
+        "untitled": string;
+        /**
+         * 名前
+         */
+        "name": string;
+        /**
+         * 動作
+         */
+        "mode": string;
+        /**
+         * 無効
+         */
+        "modeDisabled": string;
+        /**
+         * 記録だけ
+         */
+        "modeRecord": string;
+        /**
+         * 有効
+         */
+        "modeEnforce": string;
+        /**
+         * 「記録だけ」は当たった投稿やactivityを記録するだけで、何も変えません。
+         */
+        "modeCaption": string;
+        /**
+         * 対象
+         */
+        "target": string;
+        /**
+         * 投稿
+         */
+        "targetNote": string;
+        /**
+         * activity
+         */
+        "targetActivity": string;
+        /**
+         * 「投稿」は本文や添付まで見て、拒否や書き換えができます。ブーストや返信先として取り込む投稿と、編集にも効きます。「activity」はフォローやリアクションなどを種類で見て、拒否だけができます。
+         */
+        "targetCaption": string;
+        /**
+         * 評価順
+         */
+        "position": string;
+        /**
+         * 小さいものから順に評価します。付けるCWの文言は最初に当たったルールのものを使います。
+         */
+        "positionCaption": string;
+        /**
+         * 条件
+         */
+        "conditions": string;
+        /**
+         * 指定した条件をすべて満たすと当たります。複数行の欄は、どれか1行に当たれば満たします。
+         */
+        "conditionsCaption": string;
+        /**
+         * サーバー
+         */
+        "hosts": string;
+        /**
+         * 1行に1つ。サブドメインも含みます（ブロックと同じ書き方です）。
+         */
+        "hostsCaption": string;
+        /**
+         * activityの種類
+         */
+        "activityTypes": string;
+        /**
+         * botかどうか
+         */
+        "isBot": string;
+        /**
+         * 問わない
+         */
+        "any": string;
+        /**
+         * botだけ
+         */
+        "bot": string;
+        /**
+         * bot以外
+         */
+        "notBot": string;
+        /**
+         * 初めて見てからの時間
+         */
+        "newWithinHours": string;
+        /**
+         * このサーバーが初めて見てから指定した時間（時間単位）以内のアカウントに当たります。空欄なら問いません。
+         */
+        "newWithinHoursCaption": string;
+        /**
+         * 本文・CWのパターン
+         */
+        "patterns": string;
+        /**
+         * 禁止ワードと同じ書き方です。1行に1つで、スペースで区切るとすべてを含むものに当たり、/で囲むと正規表現になります。
+         */
+        "patternsCaption": string;
+        /**
+         * 添付
+         */
+        "hasAttachment": string;
+        /**
+         * 添付あり
+         */
+        "withAttachment": string;
+        /**
+         * 添付なし
+         */
+        "withoutAttachment": string;
+        /**
+         * ハッシュタグ
+         */
+        "tags": string;
+        /**
+         * 1行に1つ。#は付けても付けなくても構いません。
+         */
+        "tagsCaption": string;
+        /**
+         * 動作
+         */
+        "actions": string;
+        /**
+         * 拒否する
+         */
+        "reject": string;
+        /**
+         * メディアを落とす
+         */
+        "stripMedia": string;
+        /**
+         * 添付をセンシティブにする
+         */
+        "sensitive": string;
+        /**
+         * その人が同じ画像を添付した他の投稿でもセンシティブになります。
+         */
+        "sensitiveCaption": string;
+        /**
+         * タイムラインから外す
+         */
+        "unlist": string;
+        /**
+         * サイレンスと同じく、公開の投稿をホームに落とします。
+         */
+        "unlistCaption": string;
+        /**
+         * 付けるCW
+         */
+        "cw": string;
+        /**
+         * CWの無い投稿に付けます。送信者が付けたCWは上書きしません。
+         */
+        "cwCaption": string;
+        /**
+         * 直近24時間に当たった件数: {n}
+         */
+        "hits": ParameterizedString<"n">;
+        /**
+         * 当たった記録を見る
+         */
+        "showHits": string;
+        /**
+         * 記録はありません。
+         */
+        "noHits": string;
+        /**
+         * 適用
+         */
+        "applied": string;
+        /**
+         * 記録のみ
+         */
+        "recordedOnly": string;
+        /**
+         * ルール「{name}」を削除しますか？当たった記録も消えます。
+         */
+        "deleteConfirm": ParameterizedString<"name">;
+        /**
+         * 条件を変えると、それまでに当たった記録は消えます。
+         */
+        "conditionsResetNote": string;
+        /**
+         * 「{field}」には0以上の整数を入れてください。
+         */
+        "invalidNumber": ParameterizedString<"field">;
+    };
     "_federationCheck": {
         /**
          * 疎通の診断
@@ -12094,6 +12312,18 @@ export interface Locale extends ILocale {
          * 消えたサーバーとのフォロー関係を片付け
          */
         "cleanGoneInstance": string;
+        /**
+         * 連合のルールを作成
+         */
+        "createFederationRule": string;
+        /**
+         * 連合のルールを更新
+         */
+        "updateFederationRule": string;
+        /**
+         * 連合のルールを削除
+         */
+        "deleteFederationRule": string;
         /**
          * ジョブキューをクリア
          */

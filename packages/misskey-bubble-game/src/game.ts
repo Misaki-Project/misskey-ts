@@ -20,6 +20,63 @@ export type Mono = {
 	dropCandidate: boolean;
 };
 
+/**
+ * The shape set (mono definitions) of the game (mk-go, #3216).
+ */
+export type BaseGameMode = 'normal' | 'yen' | 'square' | 'sweets' | 'space';
+
+/**
+ * The body physics, chosen separately from the shape set (mk-go, #3216).
+ * space has its own physics and takes no variant.
+ */
+export type GamePhysics = 'default' | 'bouncy' | 'friction';
+
+type VariantBase = Exclude<BaseGameMode, 'space'>;
+type VariantPhysics = Exclude<GamePhysics, 'default'>;
+
+/**
+ * The game mode string. It keys everything a game is stored under (ranking,
+ * high score, save, replay), so each combination of shape set and physics is
+ * a mode of its own.
+ *
+ * mk-go (#3216): 形と物理をつないだ 1 つの文字列にする。サーバーはこの文字列を
+ * 検査せずにそのまま記録・集計するので、backend を変えずにランキングが組み合わせ
+ * ごとに分かれる。**NORMAL × BOUNCY だけは `bouncy` のまま** — #3194 で独立の
+ * モードとして出したときの名前で、これまでのランキング・ハイスコア・途中保存が
+ * この名前で残っている。
+ */
+export type GameMode = BaseGameMode | 'bouncy' | `${VariantBase}-${VariantPhysics}`;
+
+const BASE_GAME_MODES: readonly BaseGameMode[] = ['normal', 'yen', 'square', 'sweets', 'space'];
+const GAME_PHYSICS: readonly GamePhysics[] = ['default', 'bouncy', 'friction'];
+
+/**
+ * Builds the game mode string from a shape set and physics (mk-go, #3216).
+ */
+export function gameModeOf(base: BaseGameMode, physics: GamePhysics): GameMode {
+	if (base === 'space' || physics === 'default') return base;
+	if (base === 'normal' && physics === 'bouncy') return 'bouncy';
+	return `${base}-${physics}`;
+}
+
+/**
+ * Splits a game mode string into its shape set and physics (mk-go, #3216).
+ * Returns null for a string that is not a game mode.
+ */
+export function parseGameMode(mode: string): { base: BaseGameMode; physics: GamePhysics } | null {
+	if (mode === 'bouncy') return { base: 'normal', physics: 'bouncy' };
+	if ((BASE_GAME_MODES as readonly string[]).includes(mode)) return { base: mode as BaseGameMode, physics: 'default' };
+	const i = mode.lastIndexOf('-');
+	if (i < 0) return null;
+	const base = mode.slice(0, i);
+	const physics = mode.slice(i + 1);
+	if (base === 'space' || !(BASE_GAME_MODES as readonly string[]).includes(base)) return null;
+	if (physics === 'default' || !(GAME_PHYSICS as readonly string[]).includes(physics)) return null;
+	// normal-bouncy は bouncy と同じ遊びなので、別名を作らない (ランキングが割れる)。
+	if (base === 'normal' && physics === 'bouncy') return null;
+	return { base: base as BaseGameMode, physics: physics as GamePhysics };
+}
+
 type Log = {
 	frame: number;
 	operation: 'drop';
@@ -78,7 +135,10 @@ export class DropAndFusionGame extends EventEmitter<{
 	private tickCallbackQueue: { frame: number; callback: () => void; }[] = [];
 	private overflowCollider: Matter.Body;
 	private isGameOver = false;
-	private gameMode: 'normal' | 'yen' | 'square' | 'sweets' | 'space' | 'bouncy';
+	private gameMode: GameMode;
+	// mk-go (#3216): gameMode を形と物理に分けたもの。物理の判定はこちらを見る。
+	private baseMode: BaseGameMode;
+	private physics: GamePhysics;
 	private rng: () => number;
 	private logs: Log[] = [];
 
@@ -107,13 +167,12 @@ export class DropAndFusionGame extends EventEmitter<{
 	private holding: { id: string; mono: Mono } | null = null;
 
 	public get monoDefinitions() {
-		switch (this.gameMode) {
+		switch (this.baseMode) {
 			case 'normal': return NORAML_MONOS;
 			case 'yen': return YEN_MONOS;
 			case 'square': return SQUARE_MONOS;
 			case 'sweets': return SWEETS_MONOS;
 			case 'space': return NORAML_MONOS;
-			case 'bouncy': return NORAML_MONOS;
 		}
 	}
 
@@ -151,18 +210,22 @@ export class DropAndFusionGame extends EventEmitter<{
 		//#endregion
 
 		this.gameMode = env.gameMode;
+		const parsed = parseGameMode(env.gameMode);
+		if (parsed == null) throw new Error(`unknown game mode: ${env.gameMode}`);
+		this.baseMode = parsed.base;
+		this.physics = parsed.physics;
 		this.getMonoRenderOptions = env.getMonoRenderOptions ?? null;
 		this.rng = seedrandom(env.seed);
 
 		// sweetsモードは重いため
-		const physicsQualityFactor = this.gameMode === 'sweets' ? 4 : this.PHYSICS_QUALITY_FACTOR;
+		const physicsQualityFactor = this.baseMode === 'sweets' ? 4 : this.PHYSICS_QUALITY_FACTOR;
 		this.engine = Matter.Engine.create({
 			constraintIterations: 2 * physicsQualityFactor,
 			positionIterations: 6 * physicsQualityFactor,
 			velocityIterations: 4 * physicsQualityFactor,
 			gravity: {
 				x: 0,
-				y: this.gameMode === 'space' ? 0.0125 : 1,
+				y: this.baseMode === 'space' ? 0.0125 : 1,
 			},
 			timing: {
 				timeScale: 2,
@@ -176,8 +239,10 @@ export class DropAndFusionGame extends EventEmitter<{
 		const WALL_OPTIONS: Matter.IChamferableBodyDefinition = {
 			label: '_wall_',
 			isStatic: true,
+			// 静止した物体は matter.js が摩擦を 1 に書き換える (Body.setStatic) ので、この値は
+			// 効いていない。玉との組は小さい方で決まるので、玉の摩擦がそのまま効く。
 			friction: 0.7,
-			slop: this.gameMode === 'space' ? 0.01 : 0.7,
+			slop: this.baseMode === 'space' ? 0.01 : 0.7,
 			render: {
 				strokeStyle: 'transparent',
 				fillStyle: 'transparent',
@@ -195,7 +260,8 @@ export class DropAndFusionGame extends EventEmitter<{
 		// 終わっているので、壁の下・床の外 (左下 / 右下の角の外側) に隙間がある。挟まれた
 		// 玉はそこから抜けていた (実測: (-94, 712) で消えた)。床を壁の外まで広げ、壁を
 		// 床の下まで伸ばす。
-		const containsEscapes = this.gameMode === 'bouncy' || this.gameMode === 'space';
+		// #3216: BOUNCY はどの形でも当てる (弾む玉は形によらず挟まれて押し出される)。
+		const containsEscapes = this.physics === 'bouncy' || this.baseMode === 'space';
 		const thickness = this.WALL_THICKNESS;
 		const wallTop = containsEscapes ? -this.CONTAINING_WALL_EXTRA_HEIGHT : 0;
 		const wallBottom = containsEscapes ? this.GAME_HEIGHT + thickness : this.GAME_HEIGHT;
@@ -243,6 +309,14 @@ export class DropAndFusionGame extends EventEmitter<{
 		// 勢いのまま壁の中を進んで抜ける。normal の最大は実測 13.2 (同じ単位) なので、
 		// 普通の動きには効かない値にしてある。
 		maxSpeed: 15,
+		// #3216 で BOUNCY を他の形にも当てたときの上限。**NORMAL (= #3194 の bouncy) は
+		// 15 のまま** — 変えると、これまでの記録とリプレイの結末が変わる。
+		// 四角い玉は挟まれて床の下へ抜けやすく、15 だと 100 局中 1 局で抜けた (12 で 0)。
+		maxSpeedShapes: 12,
+		// sweets は重いので物理の精度を落としている (上の physicsQualityFactor)。その分
+		// 速い玉が床をすり抜けやすく、15 のままだと 30 局中 3 局で玉が床の下へ抜けた。
+		// 10 で 60 局中 0 (精度を 2 倍にしても 1 局残り、重さは 1.5 倍になった)。
+		maxSpeedSweets: 10,
 		// ほぼ止まっている玉に当たったときの跳ね返りを補う相手の速さの上限。物理エンジンは
 		// 積み重なった玉への衝突で勢いを下の玉と床へ逃がすので、落ちている玉に当たっても
 		// ほとんど跳ねない (実測: 同じ玉が床で 169px 跳ねるのに、玉の上では 1px に満たない。
@@ -261,16 +335,39 @@ export class DropAndFusionGame extends EventEmitter<{
 	 */
 	private bounceAssists: { mover: Matter.Body; other: Matter.Body; nx: number; ny: number; approach: number }[] = [];
 
+	/**
+	 * Body physics for the FRICTION physics (mk-go, #3216).
+	 *
+	 * 玉どうしも壁も強く引っかかり、転がらずにその場で止まる。跳ねない。値は
+	 * テストの計測で決めた (drop-and-fusion.test.ts の #3216)。
+	 */
+	private static readonly FRICTION_PHYSICS = {
+		restitution: 0,
+		friction: 1,
+		frictionStatic: 20,
+		// 左右の壁に触れている玉の縦の速さと回転を、毎 tick この割合まで落とす
+		// (壁にくっつく)。**止めきらない** — 玉は壁際ぎりぎりまで寄せて落とせるので、
+		// 触れた瞬間に止めると落とした高さ (判定領域の中) に貼り付いて終わる。
+		// ゆっくりずり落ちて最後は下へ届く。摩擦だけでは効かない — 垂直な壁は玉を
+		// 横から押さないので、摩擦力が生まれない。
+		wallGrip: 0.2,
+		// 他の玉に触れている玉の速さ (縦横とも) を、毎 tick この割合まで落とす
+		// (玉どうしもくっつく)。摩擦だけでは、落ちてきた玉が下の玉の上を滑り落ちる。
+		monoGrip: 0.2,
+	};
+
 	private createBody(mono: Mono, x: number, y: number) {
-		const bouncy = this.gameMode === 'bouncy';
+		const space = this.baseMode === 'space';
+		const bouncy = this.physics === 'bouncy';
+		const friction = this.physics === 'friction';
 		const options = {
 			label: mono.id,
-			density: this.gameMode === 'space' ? 0.01 : ((mono.sizeX * mono.sizeY) / 10000),
-			restitution: this.gameMode === 'space' ? 0.5 : bouncy ? DropAndFusionGame.BOUNCY_PHYSICS.restitution : 0.2,
-			frictionAir: this.gameMode === 'space' ? 0 : 0.01,
-			friction: this.gameMode === 'space' ? 0.5 : bouncy ? DropAndFusionGame.BOUNCY_PHYSICS.friction : 0.7,
-			frictionStatic: this.gameMode === 'space' ? 0 : bouncy ? DropAndFusionGame.BOUNCY_PHYSICS.frictionStatic : 5,
-			slop: this.gameMode === 'space' ? 0.01 : 0.7,
+			density: space ? 0.01 : ((mono.sizeX * mono.sizeY) / 10000),
+			restitution: space ? 0.5 : bouncy ? DropAndFusionGame.BOUNCY_PHYSICS.restitution : friction ? DropAndFusionGame.FRICTION_PHYSICS.restitution : 0.2,
+			frictionAir: space ? 0 : 0.01,
+			friction: space ? 0.5 : bouncy ? DropAndFusionGame.BOUNCY_PHYSICS.friction : friction ? DropAndFusionGame.FRICTION_PHYSICS.friction : 0.7,
+			frictionStatic: space ? 0 : bouncy ? DropAndFusionGame.BOUNCY_PHYSICS.frictionStatic : friction ? DropAndFusionGame.FRICTION_PHYSICS.frictionStatic : 5,
+			slop: space ? 0.01 : 0.7,
 			//mass: 0,
 			render: this.getMonoRenderOptions ? this.getMonoRenderOptions(mono) : undefined,
 		} satisfies Matter.IChamferableBodyDefinition;
@@ -326,7 +423,7 @@ export class DropAndFusionGame extends EventEmitter<{
 			this.emit('monoAdded', nextMono);
 		}
 
-		const hasComboBonus = this.gameMode !== 'yen' && this.gameMode !== 'sweets';
+		const hasComboBonus = this.baseMode !== 'yen' && this.baseMode !== 'sweets';
 		const comboBonus = hasComboBonus ? 1 + ((this.combo - 1) / 5) : 1;
 		const additionalScore = Math.round(currentMono.score * comboBonus);
 		this.score += additionalScore;
@@ -378,8 +475,8 @@ export class DropAndFusionGame extends EventEmitter<{
 	}
 
 	private recordBounceAssist(a: Matter.Body, b: Matter.Body) {
-		// bouncy だけ。**条件はここ 1 か所** — 適用 (tick) はモードを見ずに毎回呼ぶ。
-		if (this.gameMode !== 'bouncy') return;
+		// BOUNCY だけ。**条件はここ 1 か所** — 適用 (tick) は物理を見ずに毎回呼ぶ。
+		if (this.physics !== 'bouncy') return;
 		// **単位を tick 後に揃える。** 衝突の通知は Engine.update の途中 (位置を進めた直後) に
 		// 来るので、ここの velocity は 1 step の移動量で、tick 後の値 (applyBounceAssists と
 		// limitSpeed が読む) の timeScale 倍になっている。揃えないと近づく速さを 2 倍に
@@ -425,6 +522,56 @@ export class DropAndFusionGame extends EventEmitter<{
 				x: mover.velocity.x - (nx * add),
 				y: mover.velocity.y - (ny * add),
 			});
+		}
+	}
+
+	/**
+	 * Slows the monos touching a side wall so they cling to it and slide down
+	 * slowly (mk-go, #3216, FRICTION).
+	 */
+	private gripWalls(grip: number): Set<Matter.Body['id']> {
+		const gripped = new Set<Matter.Body['id']>();
+		// **重なりではなく距離で見る。** 壁際に寄せて落とした玉は壁の内側の面にちょうど
+		// 接するだけで重ならないので、衝突判定では「触れていない」ことになる。外形の端が
+		// 面から 1px 以内なら触れているとみなす (外形は凸包の頂点から取るので、回転や
+		// 非対称な形でも実際の端になる)。**触れていない玉に余裕を持たせない** — 回転した
+		// お札や sweets は幅が縮むので、幅から余裕を計算すると空中の玉まで減速した
+		// (#3216 の敵対的レビューで実測)。sweets は定義上の幅より細いので、壁際に寄せて
+		// 落としても数 px 離れて触れないことがある。それは実際に触れていないので正しい。
+		const left = this.PLAYAREA_MARGIN + 1;
+		const right = this.GAME_WIDTH - this.PLAYAREA_MARGIN - 1;
+		// world の並び順で処理するので決定的。
+		for (const b of this.engine.world.bodies) {
+			if (b.isStatic) continue;
+			if (b.bounds.min.x > left && b.bounds.max.x < right) continue;
+			Matter.Body.setVelocity(b, { x: b.velocity.x, y: b.velocity.y * grip });
+			Matter.Body.setAngularVelocity(b, b.angularVelocity * grip);
+			gripped.add(b.id);
+		}
+		return gripped;
+	}
+
+	/**
+	 * Slows the monos touching another mono so they stick together (mk-go,
+	 * #3216, FRICTION).
+	 */
+	private gripMonos(grip: number, onWall: Set<Matter.Body['id']>) {
+		if (grip >= 1) return;
+		const touching = new Set<Matter.Body['id']>();
+		for (const pair of this.engine.pairs.list) {
+			if (!pair.isActive || pair.isSensor) continue;
+			const a = pair.bodyA.parent;
+			const b = pair.bodyB.parent;
+			if (a.isStatic || b.isStatic) continue;
+			touching.add(a.id);
+			touching.add(b.id);
+		}
+		// world の並び順で処理するので決定的。**壁でくっついた玉には重ねない** — 両方を
+		// 掛けると 0.2 x 0.2 で縦の速さがほぼ 0 になり、壁際に支えの無い玉が宙づりの
+		// 柱になって溜まる (レビューの実測で最大 9 個、判定領域にも掛かった)。
+		for (const b of this.engine.world.bodies) {
+			if (!touching.has(b.id) || onWall.has(b.id)) continue;
+			Matter.Body.setVelocity(b, { x: b.velocity.x * grip, y: b.velocity.y * grip });
 		}
 	}
 
@@ -561,9 +708,16 @@ export class DropAndFusionGame extends EventEmitter<{
 
 		Matter.Engine.update(this.engine, this.TICK_DELTA);
 
-		// 記録は bouncy のときだけ (recordBounceAssist)。ほかのモードでは空なので何も起きない。
+		// 記録は BOUNCY のときだけ (recordBounceAssist)。ほかの物理では空なので何も起きない。
 		this.applyBounceAssists();
-		if (this.gameMode === 'bouncy') this.limitSpeed(DropAndFusionGame.BOUNCY_PHYSICS.maxSpeed);
+		if (this.physics === 'bouncy') {
+			const p = DropAndFusionGame.BOUNCY_PHYSICS;
+			this.limitSpeed(this.baseMode === 'normal' ? p.maxSpeed : this.baseMode === 'sweets' ? p.maxSpeedSweets : p.maxSpeedShapes);
+		}
+		if (this.physics === 'friction') {
+			const onWall = this.gripWalls(DropAndFusionGame.FRICTION_PHYSICS.wallGrip);
+			this.gripMonos(DropAndFusionGame.FRICTION_PHYSICS.monoGrip, onWall);
+		}
 
 		if (!this.isGameOver) this.checkOverflow();
 
@@ -601,7 +755,7 @@ export class DropAndFusionGame extends EventEmitter<{
 		});
 
 		// add force
-		if (this.gameMode === 'space') {
+		if (this.baseMode === 'space') {
 			Matter.Body.applyForce(body, body.position, {
 				x: 0,
 				y: (Math.PI * head.mono.sizeX * head.mono.sizeY) / 65536,

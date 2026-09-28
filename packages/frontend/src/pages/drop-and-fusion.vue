@@ -23,7 +23,16 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<div class="_woodenFrame" style="text-align: center;">
 					<div class="_woodenFrameInner">
 						<div class="_gaps" style="padding: 16px;">
-							<MkSelect v-model="gameMode" :items="gameModeDef">
+							<MkSelect v-model="baseMode" :items="baseModeDef">
+								<template #label>{{ i18n.ts._mkgoBubbleGame.mode }}</template>
+							</MkSelect>
+							<!--
+								mk-go (#3216): 物理は形と別に選ぶ。SPACE は重力がほぼ無いこと自体が
+								物理の違いなので選ばせない。
+							-->
+							<MkSelect v-if="baseMode !== 'space'" v-model="physics" :items="physicsDef">
+								<template #label>{{ i18n.ts._mkgoBubbleGame.physics }}</template>
+								<template #caption>{{ physicsCaption }}</template>
 							</MkSelect>
 							<MkButton primary gradate large rounded inline @click="start">{{ i18n.ts.start }}</MkButton>
 						</div>
@@ -40,12 +49,12 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<div class="_woodenFrame">
 					<div class="_woodenFrameInner">
 						<div class="_gaps_s" style="padding: 16px;">
-							<div><b>{{ i18n.tsx.lastNDays({ n: 7 }) }} {{ i18n.ts.ranking }}</b> ({{ gameMode.toUpperCase() }})</div>
+							<div><b>{{ i18n.tsx.lastNDays({ n: 7 }) }} {{ i18n.ts.ranking }}</b> ({{ dropAndFusionModeLabel(gameMode) }})</div>
 							<div v-if="ranking" class="_gaps_s">
 								<div v-for="r in ranking" :key="r.id" :class="$style.rankingRecord">
 									<MkAvatar v-if="r.user" :link="true" style="width: 24px; height: 24px; margin-right: 4px;" :user="r.user"/>
 									<MkUserName v-if="r.user" :user="r.user" :nowrap="true"/>
-									<b style="margin-left: auto;">{{ r.score.toLocaleString() }} {{ getScoreUnit(gameMode) }}</b>
+									<b style="margin-left: auto;">{{ r.score.toLocaleString() }} {{ dropAndFusionScoreUnit(gameMode) }}</b>
 								</div>
 							</div>
 							<div v-else>{{ i18n.ts.loading }}</div>
@@ -83,7 +92,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue';
 import * as Misskey from 'misskey-js';
-import { DropAndFusionGame } from 'misskey-bubble-game';
+import { DropAndFusionGame, gameModeOf } from 'misskey-bubble-game';
 import XGame from './drop-and-fusion.game.vue';
 import { definePage } from '@/page.js';
 import MkButton from '@/components/MkButton.vue';
@@ -95,10 +104,11 @@ import { misskeyApiGet } from '@/utility/misskey-api.js';
 import * as os from '@/os.js';
 import { clearDropAndFusionSave, isDropAndFusionSaveExpired, loadDropAndFusionSave } from '@/utility/drop-and-fusion-save.js';
 import type { DropAndFusionSave } from '@/utility/drop-and-fusion-save.js';
+import { dropAndFusionModeLabel, dropAndFusionScoreUnit } from '@/utility/drop-and-fusion-mode.js';
 
 const {
-	model: gameMode,
-	def: gameModeDef,
+	model: baseMode,
+	def: baseModeDef,
 } = useMkSelect({
 	items: [
 		{ label: 'NORMAL', value: 'normal' },
@@ -106,13 +116,36 @@ const {
 		{ label: 'YEN', value: 'yen' },
 		{ label: 'SWEETS', value: 'sweets' },
 		// mk-go (#3194): SPACE は本家がメニューから外していた。はみ出しの判定の猶予
-		// (#3193) と、玉が箱の外へ出ないようにした壁で遊べるようになった。BOUNCY は
-		// mk-go 独自。
+		// (#3193) と、玉が箱の外へ出ないようにした壁で遊べるようになった。
 		{ label: 'SPACE', value: 'space' },
-		{ label: 'BOUNCY', value: 'bouncy' },
 	],
 	initialValue: 'normal',
 });
+
+// mk-go (#3216): 物理を形と別に選ぶ。#3194 の BOUNCY は NORMAL × BOUNCY になった
+// (モードの文字列は `bouncy` のままなので、これまでのランキングと記録が続く)。
+const {
+	model: physics,
+	def: physicsDef,
+} = useMkSelect({
+	items: [
+		{ label: 'DEFAULT', value: 'default' },
+		{ label: 'BOUNCY', value: 'bouncy' },
+		{ label: 'FRICTION', value: 'friction' },
+	],
+	initialValue: 'default',
+});
+
+const physicsCaption = computed(() => {
+	switch (physics.value) {
+		case 'bouncy': return i18n.ts._mkgoBubbleGame.physicsBouncy;
+		case 'friction': return i18n.ts._mkgoBubbleGame.physicsFriction;
+		default: return i18n.ts._mkgoBubbleGame.physicsDefault;
+	}
+});
+
+// ランキング・ハイスコア・途中保存・スコアの登録は、すべてこの文字列で分かれる。
+const gameMode = computed(() => gameModeOf(baseMode.value, physics.value));
 const gameStarted = ref(false);
 const mute = ref(false);
 const ranking = ref<Misskey.entities.BubbleGameRankingResponse | null>(null);
@@ -120,16 +153,6 @@ const ranking = ref<Misskey.entities.BubbleGameRankingResponse | null>(null);
 watch(gameMode, async () => {
 	ranking.value = await misskeyApiGet('bubble-game/ranking', { gameMode: gameMode.value });
 }, { immediate: true });
-
-function getScoreUnit(gameMode: string) {
-	return gameMode === 'normal' ? 'pt' :
-		gameMode === 'square' ? 'pt' :
-		gameMode === 'yen' ? '円' :
-		gameMode === 'sweets' ? 'kcal' :
-		gameMode === 'space' ? 'pt' :
-		gameMode === 'bouncy' ? 'pt' :
-		'' as never;
-}
 
 // mk-go (#3192): 続きから遊ぶときの途中保存。
 const resume = ref<DropAndFusionSave | null>(null);

@@ -35,7 +35,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<div class="_woodenFrame" :class="[$style.headerTitle]">
 					<div class="_woodenFrameInner">
 						<b>{{ i18n.ts.bubbleGame }}</b>
-						<div>- {{ gameMode.toUpperCase() }} -</div>
+						<div>- {{ dropAndFusionModeLabel(gameMode) }} -</div>
 					</div>
 				</div>
 				<div class="_woodenFrame _woodenFrameH">
@@ -96,15 +96,15 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<div v-if="isGameOver && !replaying" :class="$style.gameOverLabel">
 					<div class="_gaps_s">
 						<img src="/client-assets/drop-and-fusion/gameover.png" style="width: 200px; max-width: 100%; display: block; margin: auto; margin-bottom: -5px;"/>
-						<div>{{ i18n.ts._bubbleGame._score.score }}: <MkNumber :value="score"/>{{ getScoreUnit(gameMode) }}</div>
+						<div>{{ i18n.ts._bubbleGame._score.score }}: <MkNumber :value="score"/>{{ dropAndFusionScoreUnit(gameMode) }}</div>
 						<div>{{ i18n.ts._bubbleGame._score.maxChain }}: <MkNumber :value="maxCombo"/></div>
-						<div v-if="gameMode === 'yen'">
+						<div v-if="baseMode === 'yen'">
 							{{ i18n.ts._bubbleGame._score.scoreYen }}:
 							<I18n :src="i18n.ts._bubbleGame._score.yen" tag="b">
 								<template #yen><MkNumber :value="yenTotal ?? score"/></template>
 							</I18n>
 						</div>
-						<I18n v-if="gameMode === 'sweets'" :src="i18n.ts._bubbleGame._score.scoreSweets" tag="div">
+						<I18n v-if="baseMode === 'sweets'" :src="i18n.ts._bubbleGame._score.scoreSweets" tag="div">
 							<template #onigiriQtyWithUnit>
 								<I18n :src="i18n.ts._bubbleGame._score.estimatedQty" tag="b">
 									<template #qty><MkNumber :value="score / 130"/></template>
@@ -145,9 +145,9 @@ SPDX-License-Identifier: AGPL-3.0-only
 			<div style="display: flex;">
 				<div class="_woodenFrame" style="flex: 1; margin-right: 10px;">
 					<div class="_woodenFrameInner">
-						<div>{{ i18n.ts._bubbleGame._score.score }}: <MkNumber :value="score"/>{{ getScoreUnit(gameMode) }}</div>
-						<div>{{ i18n.ts._bubbleGame._score.highScore }}: <b v-if="highScore"><MkNumber :value="highScore"/>{{ getScoreUnit(gameMode) }}</b><b v-else>-</b></div>
-						<div v-if="gameMode === 'yen'">
+						<div>{{ i18n.ts._bubbleGame._score.score }}: <MkNumber :value="score"/>{{ dropAndFusionScoreUnit(gameMode) }}</div>
+						<div>{{ i18n.ts._bubbleGame._score.highScore }}: <b v-if="highScore"><MkNumber :value="highScore"/>{{ dropAndFusionScoreUnit(gameMode) }}</b><b v-else>-</b></div>
+						<div v-if="baseMode === 'yen'">
 							{{ i18n.ts._bubbleGame._score.scoreYen }}:
 							<I18n :src="i18n.ts._bubbleGame._score.yen" tag="b">
 								<template #yen><MkNumber :value="yenTotal ?? score"/></template>
@@ -202,10 +202,10 @@ SPDX-License-Identifier: AGPL-3.0-only
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch, useTemplateRef } from 'vue';
 import * as Matter from 'matter-js';
 import * as Misskey from 'misskey-js';
-import { DropAndFusionGame } from 'misskey-bubble-game';
+import { DropAndFusionGame, parseGameMode } from 'misskey-bubble-game';
 import { useInterval } from '@@/js/use-interval.js';
 import { apiUrl } from '@@/js/config.js';
-import type { Mono } from 'misskey-bubble-game';
+import type { GameMode, Mono } from 'misskey-bubble-game';
 import { definePage } from '@/page.js';
 import MkRippleEffect from '@/components/MkRippleEffect.vue';
 import * as os from '@/os.js';
@@ -225,6 +225,7 @@ import { clearDropAndFusionSave, writeDropAndFusionSave } from '@/utility/drop-a
 import { fastForwardGame } from '@/utility/drop-and-fusion-fast-forward.js';
 import type { FastForwardResult } from '@/utility/drop-and-fusion-fast-forward.js';
 import type { DropAndFusionSave } from '@/utility/drop-and-fusion-save.js';
+import { dropAndFusionModeLabel, dropAndFusionScoreUnit } from '@/utility/drop-and-fusion-mode.js';
 
 type FrontendMonoDefinition = {
 	id: string;
@@ -524,7 +525,8 @@ const SWEETS_MONOS: FrontendMonoDefinition[] = [{
 }];
 
 const props = defineProps<{
-	gameMode: 'normal' | 'square' | 'yen' | 'sweets' | 'space' | 'bouncy';
+	// mk-go (#3216): 形と物理をつないだモードの文字列 (例: square-bouncy)。
+	gameMode: GameMode;
 	mute: boolean;
 	/**
 	 * A suspended game to continue from (mk-go, #3192). The caller has already
@@ -537,26 +539,17 @@ const emit = defineEmits<{
 	(ev: 'end'): void;
 }>();
 
+// mk-go (#3216): 玉の見た目・単位・スコアの表示は形で決まる (物理では変わらない)。
+const baseMode = computed(() => parseGameMode(props.gameMode)?.base ?? 'normal');
+
 const monoDefinitions = computed(() => {
-	return props.gameMode === 'normal' ? NORAML_MONOS :
-		props.gameMode === 'square' ? SQUARE_MONOS :
-		props.gameMode === 'yen' ? YEN_MONOS :
-		props.gameMode === 'sweets' ? SWEETS_MONOS :
-		props.gameMode === 'space' ? NORAML_MONOS :
-		props.gameMode === 'bouncy' ? NORAML_MONOS :
+	return baseMode.value === 'normal' ? NORAML_MONOS :
+		baseMode.value === 'square' ? SQUARE_MONOS :
+		baseMode.value === 'yen' ? YEN_MONOS :
+		baseMode.value === 'sweets' ? SWEETS_MONOS :
+		baseMode.value === 'space' ? NORAML_MONOS :
 		[] as never;
 });
-
-function getScoreUnit(gameMode: string) {
-	return gameMode === 'normal' ? 'pt' :
-		gameMode === 'square' ? 'pt' :
-		gameMode === 'yen' ? '円' :
-		gameMode === 'sweets' ? 'kcal' :
-		// mk-go: space はメニューから外れていて抜けていた。bouncy は #3194。
-		gameMode === 'space' ? 'pt' :
-		gameMode === 'bouncy' ? 'pt' :
-		'' as never;
-}
 
 function getMonoRenderOptions(mono: Mono) {
 	const def = monoDefinitions.value.find(x => x.id === mono.id)!;
@@ -603,6 +596,8 @@ const isGameOver = ref(false);
 const gameLoaded = ref(false);
 const readyGo = ref<'ready' | 'go' | null>('ready');
 const highScore = ref<number | null>(null);
+// mk-go (#3216): YEN は物理が違っても累計を 1 つにまとめる (yen-bouncy / yen-friction の
+// 稼ぎも同じ財布に入る)。ハイスコアとランキングは組み合わせごとに分かれる。
 const yenTotal = ref<number | null>(null);
 const showConfig = ref(false);
 const replaying = ref(false);
@@ -996,7 +991,7 @@ function getGameImageDriveFile() {
 			ctx.fillStyle = '#000';
 			ctx.font = '16px bold sans-serif';
 			ctx.textBaseline = 'top';
-			ctx.fillText(`SCORE: ${score.value.toLocaleString()}${getScoreUnit(props.gameMode)}`, 10, 10);
+			ctx.fillText(`SCORE: ${score.value.toLocaleString()}${dropAndFusionScoreUnit(props.gameMode)}`, 10, 10);
 
 			ctx.globalAlpha = 0.7;
 			ctx.drawImage(logo, game.GAME_WIDTH * 0.55, 6, game.GAME_WIDTH * 0.45, game.GAME_WIDTH * 0.45 * (logo.height / logo.width));
@@ -1036,7 +1031,7 @@ async function share() {
 	if (!file) return;
 	os.post({
 		initialText: `#BubbleGame (${props.gameMode})
-SCORE: ${score.value.toLocaleString()}${getScoreUnit(props.gameMode)}`,
+SCORE: ${score.value.toLocaleString()}${dropAndFusionScoreUnit(props.gameMode)}`,
 		initialFiles: [file],
 		instant: true,
 	});
@@ -1085,7 +1080,7 @@ function attachGameEvents() {
 			const panV = x - game.PLAYAREA_MARGIN;
 			const panW = game.GAME_WIDTH - game.PLAYAREA_MARGIN - game.PLAYAREA_MARGIN;
 			const pan = ((panV / panW) - 0.5) * 2;
-			if (props.gameMode === 'yen') {
+			if (baseMode.value === 'yen') {
 				sound.playUrl('/client-assets/drop-and-fusion/drop_yen.mp3', {
 					volume: sfxVolume.value,
 					pan,
@@ -1118,7 +1113,7 @@ function attachGameEvents() {
 		const rect = canvasEl.value.getBoundingClientRect();
 		const domX = rect.left + (x * viewScale);
 		const domY = rect.top + (y * viewScale);
-		const scoreUnit = getScoreUnit(props.gameMode);
+		const scoreUnit = dropAndFusionScoreUnit(props.gameMode);
 
 		{
 			const { dispose } = os.popup(MkRippleEffect, { x: domX, y: domY }, {
@@ -1139,7 +1134,7 @@ function attachGameEvents() {
 				const panW = game.GAME_WIDTH - game.PLAYAREA_MARGIN - game.PLAYAREA_MARGIN;
 				const pan = ((panV / panW) - 0.5) * 2;
 				const pitch = def.sfxPitch;
-				if (props.gameMode === 'yen') {
+				if (baseMode.value === 'yen') {
 					sound.playUrl('/client-assets/drop-and-fusion/fusion_yen.mp3', {
 						volume: 0.25 * sfxVolume.value,
 						pan: pan,
@@ -1176,7 +1171,7 @@ function attachGameEvents() {
 			const pan = ((panV / panW) - 0.5) * 2;
 			const pitch = soundPitchMin + ((soundPitchMax - soundPitchMin) * (1 - (Math.min(10, energy) / 10)));
 
-			if (props.gameMode === 'yen') {
+			if (baseMode.value === 'yen') {
 				sound.playUrl('/client-assets/drop-and-fusion/collision_yen.mp3', {
 					volume: volume * sfxVolume.value,
 					pan: pan,
@@ -1208,7 +1203,7 @@ function attachGameEvents() {
 
 	game.addListener('gameOver', () => {
 		if (!props.mute) {
-			if (props.gameMode === 'yen') {
+			if (baseMode.value === 'yen') {
 				sound.playUrl('/client-assets/drop-and-fusion/gameover_yen.mp3', {
 					volume: 0.5 * sfxVolume.value,
 				});
@@ -1241,7 +1236,7 @@ function attachGameEvents() {
 			logs: DropAndFusionGame.serializeLogs(logs),
 		});
 
-		if (props.gameMode === 'yen') {
+		if (baseMode.value === 'yen') {
 			yenTotal.value = (yenTotal.value ?? 0) + score.value;
 			misskeyApi('i/registry/set', {
 				scope: ['dropAndFusionGame'],
@@ -1284,7 +1279,7 @@ onMounted(async () => {
 		highScore.value = null;
 	}
 
-	if (props.gameMode === 'yen') {
+	if (baseMode.value === 'yen') {
 		try {
 			yenTotal.value = await misskeyApi('i/registry/get', {
 				scope: ['dropAndFusionGame'],

@@ -3812,6 +3812,11 @@ _mkgoAvatarDecoration:
 _mkgoEmoji:
   importAndReact: "インポートしてリアクション"
 _mkgoBubbleGame:
+  mode: "モード"
+  physics: "物理"
+  physicsDefault: "通常の物理です。"
+  physicsBouncy: "よく弾みます。玉の上でも床と同じくらい跳ね返ります。"
+  physicsFriction: "跳ねず、滑りにくく、壁や玉に触れると吸い付くように動きが鈍ります。壁に触れた玉はゆっくりずり落ちます。"
   resumeTitle: "中断したゲームがあります"
   resumeText: "続きから再開しますか？最初から始めると、中断したゲームは消えます。"
   resumeContinue: "続きから"

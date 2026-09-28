@@ -5,11 +5,13 @@
 
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Matter from 'matter-js';
-import { DropAndFusionGame } from 'misskey-bubble-game';
+import { DropAndFusionGame, gameModeOf, parseGameMode } from 'misskey-bubble-game';
+import type { BaseGameMode, GamePhysics } from 'misskey-bubble-game';
 
 vi.mock('@/i.js', () => ({ $i: { id: 'user1' } }));
 import { clearDropAndFusionSave, isDropAndFusionSaveExpired, loadDropAndFusionSave, SAVE_MAX_AGE_MS, writeDropAndFusionSave } from '@/utility/drop-and-fusion-save.js';
 import { fastForwardGame } from '@/utility/drop-and-fusion-fast-forward.js';
+import { dropAndFusionModeLabel, dropAndFusionScoreUnit } from '@/utility/drop-and-fusion-mode.js';
 
 type Mode = ConstructorParameters<typeof DropAndFusionGame>[0]['gameMode'];
 
@@ -514,5 +516,297 @@ describe('bubble game bouncy / space (#3194)', () => {
 			if (!next || g.frame > 60 * 60 * 10) break;
 		}
 		expect(longestOut).toBeLessThan(30);
+	});
+});
+
+/**
+ * mk-go: 物理を形と別に選ぶ (#3216)。
+ */
+describe('bubble game physics (#3216)', () => {
+	const SHAPES = ['normal', 'square', 'yen', 'sweets'] as const satisfies readonly BaseGameMode[];
+	const PHYSICS = ['default', 'bouncy', 'friction'] as const satisfies readonly GamePhysics[];
+	const ALL_MODES: Mode[] = [...SHAPES.flatMap(b => PHYSICS.map(p => gameModeOf(b, p))), 'space'];
+
+	test('モードの文字列を形と物理から組み、分解できる', () => {
+		for (const base of SHAPES) {
+			for (const physics of PHYSICS) {
+				expect(parseGameMode(gameModeOf(base, physics))).toEqual({ base, physics });
+			}
+		}
+		expect(gameModeOf('square', 'bouncy')).toBe('square-bouncy');
+		expect(gameModeOf('yen', 'default')).toBe('yen');
+		// SPACE は物理を選ばない。
+		expect(gameModeOf('space', 'bouncy')).toBe('space');
+		expect(parseGameMode('space')).toEqual({ base: 'space', physics: 'default' });
+		expect(new Set(ALL_MODES).size).toBe(13);
+	});
+
+	// #3194 の BOUNCY は NORMAL × BOUNCY。名前を変えるとランキング・ハイスコア・途中保存が切れる。
+	test('NORMAL × BOUNCY は #3194 の bouncy のまま', () => {
+		expect(gameModeOf('normal', 'bouncy')).toBe('bouncy');
+		expect(parseGameMode('bouncy')).toEqual({ base: 'normal', physics: 'bouncy' });
+	});
+
+	// 別名を作らない (同じ遊びのランキングが割れる)。知らない文字列は受けない。
+	test.each(['normal-bouncy', 'normal-default', 'square-default', 'space-bouncy', 'yen-foo', 'foo-bouncy', 'foo', '', '-bouncy'])('%j はモードではない', (mode) => {
+		expect(parseGameMode(mode)).toBeNull();
+	});
+
+	test('知らないモードではゲームを作らない', () => {
+		expect(() => newGame('space-friction' as Mode, 'x')).toThrow();
+	});
+
+	function dropped(mode: Mode) {
+		const g = newGame(mode, 'seed');
+		g.start();
+		for (let i = 0; i < g.DROP_COOLTIME; i++) g.tick();
+		g.drop(200);
+		const bodies = g.engine.world.bodies;
+		return { g, b: bodies[bodies.length - 1] };
+	}
+
+	// 物理はどの形にも同じ値で当たる。
+	test.each(SHAPES)('%s に物理がそのまま当たる', (base) => {
+		const bouncy = dropped(gameModeOf(base, 'bouncy')).b;
+		expect(bouncy.restitution).toBeCloseTo(0.9);
+		expect(bouncy.friction).toBeCloseTo(0.01);
+		const friction = dropped(gameModeOf(base, 'friction'));
+		expect(friction.b.restitution).toBe(0);
+		expect(friction.b.friction).toBe(1);
+		expect(friction.b.frictionStatic).toBe(20);
+		// 壁の摩擦はどのモードでも 1 (matter.js が静止した物体の摩擦を 1 に書き換える)。
+		// 玉との組は小さい方で決まるので、玉の摩擦がそのまま壁際にも効く。
+		for (const w of friction.g.engine.world.bodies.filter(x => x.label === '_wall_')) {
+			expect(w.friction).toBe(1);
+		}
+		const def = dropped(base);
+		expect(def.b.restitution).toBeCloseTo(0.2);
+		expect(def.b.friction).toBeCloseTo(0.7);
+		for (const w of def.g.engine.world.bodies.filter(x => x.label === '_wall_')) {
+			expect(w.friction).toBe(1);
+		}
+	});
+
+	// 角を塞ぐ床と上へ伸ばした壁は BOUNCY の全ての形に当てる。FRICTION は本家の壁のまま。
+	test.each(SHAPES)('%s × BOUNCY は壁が上へ伸び、FRICTION は伸びない', (base) => {
+		const sideTop = (mode: Mode) => Math.min(...newGame(mode, 'w').engine.world.bodies.filter(b => b.label === '_wall_').map(b => b.bounds.min.y));
+		expect(sideTop(gameModeOf(base, 'bouncy'))).toBeLessThanOrEqual(-6000);
+		expect(sideTop(gameModeOf(base, 'friction'))).toBe(0);
+	});
+
+	/** Frames until a mono dropped right against the left wall reaches the floor. */
+	function slideDown(mode: Mode) {
+		const { g, b } = (() => {
+			const g = newGame(mode, 'wall');
+			g.start();
+			for (let i = 0; i < g.DROP_COOLTIME; i++) g.tick();
+			g.drop(0);
+			const bodies = g.engine.world.bodies;
+			return { g, b: bodies[bodies.length - 1] };
+		})();
+		for (let f = 1; f <= 60 * 30; f++) {
+			g.tick();
+			if (b.bounds.max.y >= g.GAME_HEIGHT - g.PLAYAREA_MARGIN - 1) return f;
+		}
+		return Infinity;
+	}
+
+	// **壁にくっついてゆっくりずり落ちる。最後は下へ届く** (止めきると落とした高さに
+	// 貼り付いて、判定領域の中で終わる)。
+	// 壁際に寄せて落とすと壁に触れる形 (sweets は定義上の幅より細く、寄せても数 px
+	// 離れて触れないので下で別に見る)。
+	test.each(['normal', 'square', 'yen'] as const)('FRICTION: %s の壁際の玉はゆっくりずり落ちて、最後は床へ届く', (base) => {
+		const def = slideDown(base);
+		const friction = slideDown(gameModeOf(base, 'friction'));
+		expect(friction).toBeGreaterThan(def * 5);
+		expect(friction).toBeLessThan(60 * 30);
+	}, 30000);
+
+	/**
+	 * Places a mono of `level` with its left edge `gap` px from the left wall at
+	 * `angle`, at rest in mid-air, and returns how far it falls in 20 ticks.
+	 */
+	function fallNearWall(mode: Mode, level: number, gap: number, angle: number) {
+		const g = newGame(mode, 'near');
+		g.start();
+		const mono = g.monoDefinitions.find(m => m.level === level)!;
+		const b = (g as unknown as { createBody(m: typeof mono, x: number, y: number): Matter.Body }).createBody(mono, 225, 250);
+		Matter.Composite.add(g.engine.world, b);
+		Matter.Body.setAngle(b, angle);
+		Matter.Body.setPosition(b, { x: b.position.x - (b.bounds.min.x - (g.PLAYAREA_MARGIN + gap)), y: 250 });
+		Matter.Body.setVelocity(b, { x: 0, y: 0 });
+		const y0 = b.position.y;
+		for (let i = 0; i < 20; i++) g.tick();
+		return b.position.y - y0;
+	}
+
+	// sweets も壁に触れればくっつく。
+	test('FRICTION: sweets も壁に触れていればゆっくりずり落ちる', () => {
+		expect(fallNearWall('sweets-friction', 3, 0.5, 0)).toBeLessThan(fallNearWall('sweets', 3, 0.5, 0) / 3);
+	});
+
+	// **触れていない玉は減速しない。** 外形の幅から余裕を取ると、回転して幅が縮んだ
+	// お札 (yen の 8) や sweets が壁から数十 px 離れた空中で減速していた (#3216 のレビュー)。
+	test.each([['yen', 8, 40, Math.PI / 2], ['yen', 10, 60, Math.PI / 2], ['sweets', 5, 20, Math.PI / 2], ['square', 5, 20, Math.PI / 4]] as const)('FRICTION: 壁から離れた %s (%i) は空中で減速しない', (base, level, gap, angle) => {
+		expect(fallNearWall(gameModeOf(base, 'friction'), level, gap, angle)).toBeCloseTo(fallNearWall(base, level, gap, angle), 5);
+	});
+
+	// **壁でくっついた玉には、玉どうしの減速を重ねない。** 重ねると縦の速さがほぼ 0 に
+	// なり、壁際に支えの無い玉が宙づりで溜まって早く終わる (壁際に交互に落とす 6 局の
+	// 平均: 重ねると 1366 フレーム、重ねないと 1998、DEFAULT は 3275)。
+	test('FRICTION: 壁際に積んでも、宙づりの玉が溜まって早く終わらない', () => {
+		let total = 0;
+		const seeds = ['w1', 'w2', 'w3', 'w4', 'w5', 'w6'];
+		for (const seed of seeds) {
+			const g = newGame('square-friction', seed);
+			let over = false;
+			let n = 0;
+			g.on('gameOver', () => { over = true; });
+			g.start();
+			while (!over && g.frame < 60 * 60 * 3) {
+				if (g.frame % 35 === 0) g.drop((n++ % 2) * 450);
+				if (!g.tick()) break;
+			}
+			total += g.frame;
+		}
+		expect(total / seeds.length).toBeGreaterThan(1700);
+	}, 60000);
+
+	/** How far a mono dropped slightly off-centre onto a resting mono moves sideways. */
+	function sideways(mode: Mode) {
+		const g = newGame(mode, 'roll');
+		g.start();
+		const ticks = (n: number) => { for (let i = 0; i < n; i++) g.tick(); };
+		ticks(g.DROP_COOLTIME);
+		g.drop(225);
+		ticks(120);
+		const bodies = g.engine.world.bodies;
+		const under = bodies[bodies.length - 1];
+		g.drop(225 + (under.circleRadius ?? 0) * 0.5);
+		const top = g.engine.world.bodies[g.engine.world.bodies.length - 1];
+		const x0 = top.position.x;
+		ticks(300);
+		return Math.abs(top.position.x - x0);
+	}
+
+	test('FRICTION: 玉の上に落とした玉が転がり落ちにくい', () => {
+		expect(sideways('normal-friction')).toBeLessThan(sideways('normal') / 2);
+	});
+
+	// 他の形は玉が床をすり抜けやすかったので上限を下げた (sweets は精度を落としているので
+	// さらに低い)。NORMAL (#3194 の bouncy) は記録とリプレイを変えないため 15 のまま。
+	test.each([['bouncy', 15], ['square-bouncy', 12], ['yen-bouncy', 12], ['sweets-bouncy', 10]] as const)('%s の速さの上限は %i', (mode, cap) => {
+		const g = newGame(mode, 'cap');
+		g.start();
+		for (let i = 0; i < g.DROP_COOLTIME; i++) g.tick();
+		g.drop(225);
+		const b = g.engine.world.bodies[g.engine.world.bodies.length - 1];
+		Matter.Body.setVelocity(b, { x: 40, y: 0 });
+		g.tick();
+		const speed = Math.sqrt((b.velocity.x ** 2) + (b.velocity.y ** 2));
+		expect(speed).toBeLessThanOrEqual(cap + 0.5);
+		expect(speed).toBeGreaterThan(cap - 1.5);
+	});
+
+	// 全ての組み合わせで、同じシードと記録から同じ結末になる (リプレイと途中保存の前提)。
+	// **局を短く切って比べる** — 最後まで遊ぶと sweets では CI の既定の上限 (5 秒) を超える。
+	test.each(ALL_MODES)('%s: 同じシードと記録から同じ局面になる', (mode) => {
+		const run = (logs?: number[][]) => {
+			const g = newGame(mode, 'det');
+			const rng = botRng(3);
+			const replayLogs = logs ? DropAndFusionGame.deserializeLogs(logs) : null;
+			let next = 0;
+			g.start();
+			while (g.frame < 60 * 20) {
+				if (replayLogs) {
+					while (next < replayLogs.length && replayLogs[next].frame === g.frame) {
+						const log = replayLogs[next++];
+						if (log.operation === 'drop') g.drop(log.x);
+					}
+				} else if (g.frame % 35 === 0) {
+					g.drop(30 + rng() * 390);
+				}
+				if (!g.tick()) break;
+			}
+			const state = g.engine.world.bodies.filter(b => !b.isStatic).map(b => [b.label, b.position.x, b.position.y]);
+			return { state, logs: DropAndFusionGame.serializeLogs(g.getLogs()) };
+		};
+		const first = run();
+		expect(run(first.logs).state).toEqual(first.state);
+	}, 30000);
+
+	// 跳ね返りの補いは BOUNCY の全ての形に当てる。補わないと玉の上ではほとんど跳ねない
+	// (NORMAL の実測で 1px 未満)。
+	test.each(['square-bouncy', 'yen-bouncy'] as const)('%s: 止まっている玉の上でも跳ねる', (mode) => {
+		const g = newGame(mode, 'rebound');
+		g.start();
+		const ticks = (n: number) => { for (let i = 0; i < n; i++) g.tick(); };
+		ticks(g.DROP_COOLTIME);
+		g.drop(225);
+		ticks(300);
+		g.drop(225);
+		const body = g.engine.world.bodies[g.engine.world.bodies.length - 1];
+		let lowest: number | null = null;
+		let top = Infinity;
+		for (let i = 0; i < 400; i++) {
+			g.tick();
+			if (lowest == null) {
+				if (body.velocity.y < 0 && body.position.y > 150) lowest = body.position.y;
+			} else {
+				top = Math.min(top, body.position.y);
+			}
+		}
+		expect(lowest).not.toBeNull();
+		expect(lowest! - top).toBeGreaterThan(50);
+	});
+
+	/**
+	 * Plays a short fixed game and returns frame / score / a digest of every
+	 * mono's position.
+	 */
+	function goldenDigest(mode: Mode) {
+		const g = newGame(mode, 'golden');
+		const rng = botRng(7);
+		let score = 0;
+		let over = false;
+		g.on('changeScore', v => { score = v; });
+		g.on('gameOver', () => { over = true; });
+		g.start();
+		while (!over && g.frame < 60 * 15) {
+			if (g.frame % 35 === 0) g.drop(30 + rng() * 390);
+			if (g.frame % 175 === 100) g.hold();
+			if (!g.tick()) break;
+		}
+		const state = g.engine.world.bodies.filter(b => !b.isStatic).map(b => `${b.label}:${b.position.x.toFixed(4)},${b.position.y.toFixed(4)}`).join('|');
+		let h = 0x811c9dc5;
+		for (let i = 0; i < state.length; i++) {
+			h ^= state.charCodeAt(i);
+			h = Math.imul(h, 0x01000193) >>> 0;
+		}
+		return `${g.frame}/${score}/${h.toString(16)}`;
+	}
+
+	// **既存のモードは #3216 の前と同じ局面になる。** 上の決定性テストは同じビルドの中で
+	// リプレイと比べるだけなので、既存の物理が変わっても両方が一緒に変わって緑のまま
+	// 通る。値は #3216 の前のエンジン (HEAD の game.ts) で計った (版 4 のリプレイと
+	// 途中保存が同じ結末になる前提)。**値を書き換えるなら VERSION を上げること。**
+	test.each([
+		['normal', '900/113/a4615903'],
+		['square', '900/58/1ed1cff5'],
+		['yen', '900/407/41f248c8'],
+		['sweets', '900/1520/f11decf3'],
+		['space', '900/92/bb2ef10d'],
+		['bouncy', '900/57/d2baaf39'],
+	] as const)('%s は #3216 の前と同じ局面になる', (mode, expected) => {
+		expect(goldenDigest(mode)).toBe(expected);
+	}, 30000);
+
+	test('単位とモード名は形と物理から決まる', () => {
+		expect(dropAndFusionScoreUnit('yen-bouncy')).toBe('円');
+		expect(dropAndFusionScoreUnit('sweets-friction')).toBe('kcal');
+		expect(dropAndFusionScoreUnit('bouncy')).toBe('pt');
+		expect(dropAndFusionModeLabel('square-friction')).toBe('SQUARE × FRICTION');
+		expect(dropAndFusionModeLabel('bouncy')).toBe('NORMAL × BOUNCY');
+		expect(dropAndFusionModeLabel('yen')).toBe('YEN');
 	});
 });

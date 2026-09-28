@@ -14228,6 +14228,26 @@ export interface Locale extends ILocale {
     };
     "_mkgoBubbleGame": {
         /**
+         * モード
+         */
+        "mode": string;
+        /**
+         * 物理
+         */
+        "physics": string;
+        /**
+         * 通常の物理です。
+         */
+        "physicsDefault": string;
+        /**
+         * よく弾みます。玉の上でも床と同じくらい跳ね返ります。
+         */
+        "physicsBouncy": string;
+        /**
+         * 跳ねず、滑りにくく、壁や玉に触れると吸い付くように動きが鈍ります。壁に触れた玉はゆっくりずり落ちます。
+         */
+        "physicsFriction": string;
+        /**
          * 中断したゲームがあります
          */
         "resumeTitle": string;

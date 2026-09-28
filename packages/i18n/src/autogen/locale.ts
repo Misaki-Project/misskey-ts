@@ -9223,6 +9223,100 @@ export interface Locale extends ILocale {
             "processingError": string;
         };
     };
+    "_federationCheck": {
+        /**
+         * 疎通の診断
+         */
+        "tab": string;
+        /**
+         * このサーバーから相手へ実際に接続して、連合に必要な窓口が応答するかを1回だけ確かめます。相手へ投稿や配送は送りません。
+         */
+        "description": string;
+        /**
+         * 確かめるアカウント
+         */
+        "account": string;
+        /**
+         * 省略すると、このサーバーが知っている相手のユーザーを使います。相手のユーザーを知らないときは、アカウント名を指定すると確かめられる項目が増えます。
+         */
+        "accountCaption": string;
+        /**
+         * 診断する
+         */
+        "run": string;
+        /**
+         * 診断しています…
+         */
+        "running": string;
+        /**
+         * 問題は見つかりませんでした
+         */
+        "allOk": string;
+        /**
+         * 連合を妨げている問題があります
+         */
+        "hasFailure": string;
+        /**
+         * 注意が必要な項目があります
+         */
+        "hasWarning": string;
+        /**
+         * このサーバー自身はここでは診断できません。
+         */
+        "cannotCheckSelf": string;
+        "_status": {
+            /**
+             * 問題なし
+             */
+            "ok": string;
+            /**
+             * 注意
+             */
+            "warn": string;
+            /**
+             * 問題あり
+             */
+            "fail": string;
+            /**
+             * 確かめられず
+             */
+            "skip": string;
+        };
+        "_names": {
+            /**
+             * このサーバーの設定
+             */
+            "policy": string;
+            /**
+             * サーバー情報 (nodeinfo)
+             */
+            "nodeinfo": string;
+            /**
+             * アカウントの検索 (WebFinger)
+             */
+            "webfinger": string;
+            /**
+             * アカウントの情報 (actor)
+             */
+            "actor": string;
+            /**
+             * 署名付きの取得
+             */
+            "authorized-fetch": string;
+            /**
+             * 配送の受け口 (inbox)
+             */
+            "inbox": string;
+            /**
+             * 署名方式
+             */
+            "signature": string;
+            /**
+             * 直近の配送
+             */
+            "delivery": string;
+        };
+    };
     "_remoteEmojiImport": {
         /**
          * 相手のサーバーからは詳細を取得できないため、カテゴリやタグは手で入力してください。

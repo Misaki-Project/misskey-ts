@@ -2411,6 +2411,31 @@ _federationHealth:
     ldSignatureFailed: "LD-Signatureを検証できませんでした。"
     processingError: "処理中に失敗しました。再試行されます。"
 
+_federationCheck:
+  tab: "疎通の診断"
+  description: "このサーバーから相手へ実際に接続して、連合に必要な窓口が応答するかを1回だけ確かめます。相手へ投稿や配送は送りません。"
+  account: "確かめるアカウント"
+  accountCaption: "省略すると、このサーバーが知っている相手のユーザーを使います。相手のユーザーを知らないときは、アカウント名を指定すると確かめられる項目が増えます。"
+  run: "診断する"
+  running: "診断しています…"
+  allOk: "問題は見つかりませんでした"
+  hasFailure: "連合を妨げている問題があります"
+  hasWarning: "注意が必要な項目があります"
+  cannotCheckSelf: "このサーバー自身はここでは診断できません。"
+  _status:
+    ok: "問題なし"
+    warn: "注意"
+    fail: "問題あり"
+    skip: "確かめられず"
+  _names:
+    policy: "このサーバーの設定"
+    nodeinfo: "サーバー情報 (nodeinfo)"
+    webfinger: "アカウントの検索 (WebFinger)"
+    actor: "アカウントの情報 (actor)"
+    authorized-fetch: "署名付きの取得"
+    inbox: "配送の受け口 (inbox)"
+    signature: "署名方式"
+    delivery: "直近の配送"
 _remoteEmojiImport:
   unsupported: "相手のサーバーからは詳細を取得できないため、カテゴリやタグは手で入力してください。"
   fetchFailed: "相手のサーバーから詳細を取得できませんでした。手で入力するか、時間をおいて試してください。"

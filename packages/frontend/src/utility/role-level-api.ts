@@ -1,0 +1,92 @@
+/*
+ * SPDX-FileCopyrightText: Misaki Project
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
+import { misskeyApi } from '@/utility/misskey-api.js';
+
+export type RoleLevelCurveType = 'const' | 'linear' | 'exponential';
+export type RoleLevelRangeType = 'base' | 'const' | 'multiplier';
+
+export interface RoleLevelCurve {
+	type: RoleLevelCurveType;
+	levelUps: number;
+	base: number;
+	additional: number;
+	exponential: number;
+}
+
+export interface RoleLevelPolicyRange {
+	type: RoleLevelRangeType;
+	key?: string;
+	start: number;
+	end: number;
+	value?: unknown;
+	base?: number;
+	additional?: number;
+}
+
+export interface RoleLevelConfig {
+	roleId: string;
+	baseLevel: number;
+	experienceCurve: RoleLevelCurve[];
+	policyRanges: RoleLevelPolicyRange[];
+	revision: number;
+	updatedBy?: string;
+	createdAt?: string;
+	updatedAt?: string;
+}
+
+export interface RoleLevelExperience {
+	currentLevel: number;
+	currentLevelExp: number;
+	nextLevelExp: number | null;
+	totalExp: number;
+	minLevel: number;
+	maxLevel: number;
+	progressionStage: number;
+}
+
+export interface RoleLevelUserRole {
+	roleId: string;
+	assignmentId?: string;
+	experience: number;
+	level: RoleLevelExperience;
+}
+
+export interface RoleLevelAdminUserResponse {
+	userId: string;
+	roles: RoleLevelUserRole[];
+	audit: Array<Record<string, unknown>>;
+	operations: Array<Record<string, unknown>>;
+}
+
+type PluginEndpoint =
+	| 'plugin/role-level/admin/roles/list'
+	| 'plugin/role-level/admin/roles/show'
+	| 'plugin/role-level/admin/roles/update'
+	| 'plugin/role-level/admin/roles/delete'
+	| 'plugin/role-level/admin/users/show'
+	| 'plugin/role-level/admin/change-exp'
+	| 'plugin/role-level/users/show'
+	| 'plugin/role-level/users/profile-settings'
+	| 'plugin/role-level/users/profile-hide';
+
+export function roleLevelApi<T>(endpoint: PluginEndpoint, body: Record<string, unknown>): Promise<T> {
+	// Plugin routes are intentionally outside misskey-js' upstream endpoint map.
+	return misskeyApi(endpoint as never, body as never) as unknown as Promise<T>;
+}
+
+export function defaultRoleLevelConfig(roleId = ''): RoleLevelConfig {
+	return {
+		roleId,
+		baseLevel: 1,
+		experienceCurve: [{ type: 'const', levelUps: 99, base: 100, additional: 0, exponential: 1 }],
+		policyRanges: [{ type: 'base', start: 1, end: 101 }],
+		revision: 0,
+	};
+}
+
+export function isLegacyLevelRole(role: { target: string }): boolean {
+	return role.target === 'manualLevel';
+}

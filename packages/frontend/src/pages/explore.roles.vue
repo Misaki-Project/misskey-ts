@@ -24,9 +24,8 @@ const roles = ref<Misskey.entities.Role[] | null>(null);
 const loading = ref(true);
 
 misskeyApi('roles/list').then(res => {
-	roles.value = res.filter(x => x.target === 'manual').sort((a, b) => b.displayOrder - a.displayOrder);
+	roles.value = res.filter(x => x.target === 'manual' || (x.target as string) === 'manualLevel').sort((a, b) => b.displayOrder - a.displayOrder);
 }).finally(() => {
 	loading.value = false;
 });
 </script>
-

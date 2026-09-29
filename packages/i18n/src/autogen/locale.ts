@@ -8165,6 +8165,156 @@ export interface Locale extends ILocale {
             };
         };
     };
+    "_roleLevel": {
+        /**
+         * レベルロール
+         */
+        "title": string;
+        /**
+         * レベルロールの経験値曲線と、進行段階ごとに適用するポリシーを設定します。範囲は段階1から最大段階の次まで、重複や空白なく連続させてください。
+         */
+        "editorDescription": string;
+        /**
+         * 開始レベル
+         */
+        "baseLevel": string;
+        /**
+         * 経験値曲線
+         */
+        "experienceCurve": string;
+        /**
+         * 区間 {n}
+         */
+        "segment": ParameterizedString<"n">;
+        /**
+         * 計算方法
+         */
+        "calculation": string;
+        /**
+         * 上昇レベル数
+         */
+        "levelUps": string;
+        /**
+         * 基本必要経験値
+         */
+        "baseExperience": string;
+        /**
+         * 段階ごとの加算値
+         */
+        "additionalExperience": string;
+        /**
+         * 指数
+         */
+        "exponential": string;
+        /**
+         * 経験値区間を追加
+         */
+        "addSegment": string;
+        /**
+         * レベル別ポリシー
+         */
+        "policyRanges": string;
+        /**
+         * 開始段階を含み、終了段階を含まない範囲です。baseは通常のロール・サーバーポリシーを維持します。
+         */
+        "policyRangesDescription": string;
+        /**
+         * ポリシー範囲 {n}
+         */
+        "range": ParameterizedString<"n">;
+        /**
+         * 適用方法
+         */
+        "rangeType": string;
+        /**
+         * 開始段階
+         */
+        "startStage": string;
+        /**
+         * 終了段階（含まない）
+         */
+        "endStage": string;
+        /**
+         * ポリシーキー
+         */
+        "policyKey": string;
+        /**
+         * 固定値
+         */
+        "constantValue": string;
+        /**
+         * JSON値として入力します（true、10、"available"など）。
+         */
+        "constantValueDescription": string;
+        /**
+         * 基準値
+         */
+        "multiplierBase": string;
+        /**
+         * 段階ごとの加算値
+         */
+        "multiplierAdditional": string;
+        /**
+         * ポリシー範囲を追加
+         */
+        "addRange": string;
+        /**
+         * 固定
+         */
+        "constant": string;
+        /**
+         * 線形
+         */
+        "linear": string;
+        /**
+         * 段階加算
+         */
+        "multiplier": string;
+        /**
+         * 通常値を使用
+         */
+        "useBasePolicy": string;
+        /**
+         * レベル {level}
+         */
+        "level": ParameterizedString<"level">;
+        /**
+         * 経験値 {current} / {next}
+         */
+        "experience": ParameterizedString<"current" | "next">;
+        /**
+         * 最大レベル
+         */
+        "maxLevel": string;
+        /**
+         * 経験値を編集
+         */
+        "editExperience": string;
+        /**
+         * 経験値を設定
+         */
+        "setExperience": string;
+        /**
+         * 経験値を加算
+         */
+        "addExperience": string;
+        /**
+         * 経験値を乗算
+         */
+        "multiplyExperience": string;
+        /**
+         * レベル設定を削除
+         */
+        "removeConfiguration": string;
+        /**
+         * 旧形式のレベルロールです。保存するとプラグイン形式へ移行します。
+         */
+        "legacyRoleNotice": string;
+        /**
+         * レベル情報を取得できませんでした。サーバーのrole-level設定を確認してください。
+         */
+        "unavailable": string;
+    };
     "_role": {
         /**
          * ロールの作成

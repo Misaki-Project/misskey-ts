@@ -70,10 +70,11 @@ SPDX-License-Identifier: AGPL-3.0-only
 							</MkFukidashi>
 						</div>
 						<div v-if="user.roles.length > 0" class="roles">
-							<span v-for="role in user.roles" :key="role.id" v-tooltip="role.description" class="role" :style="{ '--color': role.color ?? '' }">
+							<span v-for="role in user.roles" :key="role.id" v-tooltip="roleTooltip(role)" class="role" :style="{ '--color': role.color ?? '' }">
 								<MkA v-adaptive-bg :to="`/roles/${role.id}`">
 									<img v-if="role.iconUrl" style="height: 1.3em; vertical-align: -22%;" :src="role.iconUrl"/>
 									{{ role.name }}
+									<b v-if="roleLevels.get(role.id)" :class="$style.roleLevel">Lv.{{ roleLevels.get(role.id)!.level.currentLevel }}</b>
 								</MkA>
 							</span>
 						</div>
@@ -207,6 +208,8 @@ import MkSparkle from '@/components/MkSparkle.vue';
 import { prefer } from '@/preferences.js';
 import MkPullToRefresh from '@/components/MkPullToRefresh.vue';
 import { isBirthday } from '@/utility/is-birthday.js';
+import { roleLevelApi } from '@/utility/role-level-api.js';
+import type { RoleLevelUserRole } from '@/utility/role-level-api.js';
 
 function calcAge(birthdate: string): number {
 	const date = new Date(birthdate);
@@ -237,6 +240,28 @@ const props = withDefaults(defineProps<{
 	refreshUser: undefined,
 	disableNotes: false,
 });
+
+const roleLevels = ref(new Map<string, RoleLevelUserRole>());
+
+async function loadRoleLevels() {
+	try {
+		const result = await roleLevelApi<{ userId: string; roles: RoleLevelUserRole[] }>('plugin/role-level/users/show', { userId: props.user.id });
+		roleLevels.value = new Map(result.roles.map(role => [role.roleId, role]));
+	} catch {
+		roleLevels.value = new Map();
+	}
+}
+
+function roleTooltip(role: Misskey.entities.UserDetailed['roles'][number]) {
+	const level = roleLevels.value.get(role.id);
+	if (!level) return role.description;
+	const progress = level.level.nextLevelExp == null
+		? i18n.ts._roleLevel.maxLevel
+		: `${level.level.currentLevelExp} / ${level.level.nextLevelExp} XP`;
+	return `${role.description}\nLv.${level.level.currentLevel} · ${progress}\nTotal XP: ${level.experience}`;
+}
+
+await loadRoleLevels();
 
 const emit = defineEmits<{
 	(ev: 'showMoreFiles'): void;
@@ -875,5 +900,11 @@ onDeactivated(disposeBannerParallaxResizeObserver);
 .verifiedLink {
 	margin-left: 4px;
 	color: var(--MI_THEME-success);
+}
+
+.roleLevel {
+	margin-left: 6px;
+	font-size: 0.85em;
+	opacity: 0.8;
 }
 </style>

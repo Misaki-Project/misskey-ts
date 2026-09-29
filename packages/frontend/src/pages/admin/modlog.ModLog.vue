@@ -59,9 +59,9 @@ SPDX-License-Identifier: AGPL-3.0-only
 		<span v-else-if="(log.type as string) === 'resetEmojiApplicationQuota'">: {{ mkgoTargetAcct(log.info) }}</span>
 		<span v-else-if="log.type === 'assignRole'">: @{{ log.info.userUsername }}{{ log.info.userHost ? '@' + log.info.userHost : '' }} <i class="ti ti-arrow-right"></i> {{ log.info.roleName }}</span>
 		<span v-else-if="log.type === 'unassignRole'">: @{{ log.info.userUsername }}{{ log.info.userHost ? '@' + log.info.userHost : '' }} <i class="ti ti-equal-not"></i> {{ log.info.roleName }}</span>
-		<span v-else-if="log.type === 'createRole'">: {{ log.info.role.name }}</span>
-		<span v-else-if="log.type === 'updateRole'">: {{ log.info.before.name }}</span>
-		<span v-else-if="log.type === 'deleteRole'">: {{ log.info.role.name }}</span>
+		<span v-else-if="log.type === 'createRole'">: {{ roleLogName(log.info) }}</span>
+		<span v-else-if="log.type === 'updateRole'">: {{ roleLogName(log.info) }}</span>
+		<span v-else-if="log.type === 'deleteRole'">: {{ roleLogName(log.info) }}</span>
 		<span v-else-if="log.type === 'addCustomEmoji'">: {{ log.info.emoji.name }}</span>
 		<span v-else-if="log.type === 'updateCustomEmoji'">: {{ log.info.before.name }}</span>
 		<span v-else-if="log.type === 'deleteCustomEmoji'">: {{ log.info.emoji.name }}</span>
@@ -168,7 +168,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 		</template>
 		<template v-else-if="log.type === 'updateRole'">
 			<div :class="$style.diff">
-				<CodeDiff :context="5" :hideHeader="true" :oldString="JSON5.stringify(log.info.before, null, '\t')" :newString="JSON5.stringify(log.info.after, null, '\t')" language="javascript" maxHeight="300px"/>
+				<CodeDiff :context="5" :hideHeader="true" :oldString="roleLogSnapshot(log.info, 'before')" :newString="roleLogSnapshot(log.info, 'after')" language="javascript" maxHeight="300px"/>
 			</div>
 		</template>
 		<template v-else-if="log.type === 'assignRole'">
@@ -260,6 +260,25 @@ function mkgoTargetAcct(info: unknown): string {
 	const i = info as { userUsername?: string; userHost?: string | null };
 	if (i.userUsername == null) return '';
 	return `@${i.userUsername}${i.userHost != null ? '@' + i.userHost : ''}`;
+}
+
+function roleLogName(info: unknown): string {
+	const value = info as {
+		roleId?: string;
+		role?: { name?: string };
+		before?: { name?: string };
+		after?: { name?: string };
+	};
+	return value.before?.name ?? value.after?.name ?? value.role?.name ?? value.roleId ?? i18n.ts.unknown;
+}
+
+function roleLogSnapshot(info: unknown, side: 'before' | 'after'): string {
+	const value = info as Record<string, unknown>;
+	const snapshot = value?.[side];
+	if (snapshot != null) return JSON5.stringify(snapshot, null, '\t');
+	// 古いCherryPickのログには片側またはrole全体しか無い場合がある。空白のdiffに
+	// せず、保存されている情報をそのまま表示する。
+	return JSON5.stringify(value?.role ?? value ?? {}, null, '\t');
 }
 </script>
 

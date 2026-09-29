@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Matter from 'matter-js';
-import { DropAndFusionGame, gameModeOf, parseGameMode } from 'misskey-bubble-game';
+import { DropAndFusionGame, gameModeOf, parseGameMode, VERSUS_RULES } from 'misskey-bubble-game';
 import type { BaseGameMode, GamePhysics } from 'misskey-bubble-game';
 
 vi.mock('@/i.js', () => ({ $i: { id: 'user1' } }));
@@ -811,5 +811,347 @@ describe('bubble game physics (#3216)', () => {
 		expect(dropAndFusionModeLabel('square-friction')).toBe('SQUARE × FRICTION');
 		expect(dropAndFusionModeLabel('bouncy')).toBe('NORMAL × BOUNCY');
 		expect(dropAndFusionModeLabel('yen')).toBe('YEN');
+	});
+});
+
+/**
+ * mk-go: 対戦のおじゃま石と攻撃 (#3229)。
+ */
+describe('bubble game versus (#3229)', () => {
+	type Internals = {
+		createBody(m: unknown, x: number, y: number, stone?: boolean): Matter.Body;
+		fusion(a: Matter.Body, b: Matter.Body): void;
+		fusionReadyBodyIds: number[];
+	};
+
+	function newVersus(mode: Mode, seed: string) {
+		return new DropAndFusionGame({ seed, gameMode: mode, getMonoRenderOptions: () => ({}), versus: true });
+	}
+
+	function internals(g: DropAndFusionGame) {
+		return g as unknown as Internals;
+	}
+
+	function place(g: DropAndFusionGame, level: number, x: number, y: number) {
+		const mono = g.monoDefinitions.find(m => m.level === level)!;
+		const b = internals(g).createBody(mono, x, y);
+		Matter.Composite.add(g.engine.world, b);
+		internals(g).fusionReadyBodyIds.push(b.id);
+		return b;
+	}
+
+	function placeStone(g: DropAndFusionGame, x: number, y: number) {
+		const lv = g.monoDefinitions.find(m => m.level === VERSUS_RULES.stoneLevel)!;
+		const b = internals(g).createBody({ ...lv, shape: 'circle', sizeY: lv.sizeX }, x, y, true);
+		Matter.Composite.add(g.engine.world, b);
+		return b;
+	}
+
+	function stones(g: DropAndFusionGame) {
+		return g.engine.world.bodies.filter(b => b.label === DropAndFusionGame.STONE_LABEL);
+	}
+
+	function attacks(g: DropAndFusionGame) {
+		const got: number[] = [];
+		g.on('attack', n => got.push(n));
+		return got;
+	}
+
+	function radiusOf(g: DropAndFusionGame, level: number) {
+		return g.monoDefinitions.find(m => m.level === level)!.sizeX / 2;
+	}
+
+	// 合体した玉の大きさでは送らない (#3231)。単発の合体はどの Lv でも送らない。
+	test.each([[1, []], [2, []], [3, []], [10, []]] as const)('Lv%i どうしの合体は %j を送る', (level, want) => {
+		const g = newVersus('normal', 's');
+		g.start();
+		const got = attacks(g);
+		const r = radiusOf(g, level);
+		internals(g).fusion(place(g, level, 150, 300), place(g, level, 150 + (2 * r), 300));
+		expect(got).toEqual(want);
+	});
+
+	// コンボは 2 コンボ目から 1 コンボごとに +1。
+	test('2 コンボ目から 1 つずつ増える', () => {
+		const g = newVersus('normal', 's');
+		g.start();
+		const got = attacks(g);
+		for (const x of [80, 200, 320]) {
+			const r = radiusOf(g, 3);
+			internals(g).fusion(place(g, 3, x, 300), place(g, 3, x + (2 * r), 300));
+		}
+		// 1 コンボ目は送らず、2 コンボ目が 1、3 コンボ目が 2。
+		expect(got).toEqual([1, 2]);
+	});
+
+	// 合体した玉に触れている石は消え、2 個で 1 個を送る。端数は持ち越す。
+	test('触れた石を消し、2 個で 1 個を送る (端数は持ち越す)', () => {
+		const g = newVersus('normal', 's');
+		g.start();
+		const got = attacks(g);
+		const cleared: number[] = [];
+		g.on('stonesCleared', n => cleared.push(n));
+		const r1 = radiusOf(g, 1);
+		const rs = radiusOf(g, VERSUS_RULES.stoneLevel);
+
+		// 1 回目: 石 1 個に触れる。単発の合体 (0) + 石 1 個 (端数) = 攻撃なし。
+		const a = place(g, 1, 100, 300);
+		const b = place(g, 1, 100 + (2 * r1), 300);
+		placeStone(g, 100 - r1 - rs, 300);
+		// 離れた石は消えない。
+		const far = placeStone(g, 400, 100);
+		internals(g).fusion(a, b);
+		expect(cleared).toEqual([1]);
+		expect(got).toEqual([]);
+		expect(stones(g)).toEqual([far]);
+
+		// 2 回目: もう 1 個消すと、持ち越した 1 個と合わせて 1 個を送る。
+		const c = place(g, 1, 300, 450);
+		const d = place(g, 1, 300 + (2 * r1), 450);
+		placeStone(g, 300 + (2 * r1) + r1 + rs, 450);
+		g.frame += 1000; // コンボにしない
+		internals(g).fusion(c, d);
+		expect(cleared).toEqual([1, 1]);
+		expect(got).toEqual([1]);
+	});
+
+	// 石どうしは同じラベルでも合体しない。
+	test('石どうしは合体しない', () => {
+		const g = newVersus('normal', 's');
+		g.start();
+		const rs = radiusOf(g, VERSUS_RULES.stoneLevel);
+		placeStone(g, 200, 500);
+		placeStone(g, 200 + (2 * rs) - 1, 500);
+		for (let i = 0; i < 30; i++) g.tick();
+		expect(stones(g)).toHaveLength(2);
+	});
+
+	// 届いた石は、次に玉を落とした後に降る。一度に最大 5 個で、残りは次の手番。
+	test('受け取った石は落とした後に最大 5 個ずつ降り、記録に残る', () => {
+		const g = newVersus('normal', 's');
+		g.start();
+		const pending: number[] = [];
+		g.on('changePendingGarbage', n => pending.push(n));
+		g.receiveAttack(7);
+		expect(g.pendingGarbage).toBe(7);
+		expect(stones(g)).toHaveLength(0);
+
+		for (let i = 0; i < g.DROP_COOLTIME; i++) g.tick(); // 落とせるまで待つ
+		expect(stones(g)).toHaveLength(0);
+		g.drop(100);
+		expect(stones(g)).toHaveLength(VERSUS_RULES.maxGarbagePerDrop);
+		expect(g.pendingGarbage).toBe(2);
+		// 石は同じ位置に重ねて出さない (降った直後に見る。進めると散らばって分からない)。
+		expect(new Set(stones(g).map(b => Math.round(b.position.x))).size).toBe(VERSUS_RULES.maxGarbagePerDrop);
+		for (let i = 0; i < 40; i++) g.tick();
+		g.drop(300);
+		expect(stones(g)).toHaveLength(7);
+		expect(g.pendingGarbage).toBe(0);
+		expect(pending).toEqual([7, 2, 0]);
+		expect(g.getLogs().filter(l => l.operation === 'garbage').map(l => l.operation === 'garbage' && l.count)).toEqual([5, 2]);
+	});
+
+	// 石は今落とした玉と重ならない位置 (玉の上端より上) に出る。重なると玉を弾いて
+	// 狙った位置をずらす。
+	test.each(['normal', 'square', 'yen', 'sweets', 'space'] as const)('%s: 石は落とした玉と重ならない', (mode) => {
+		for (const x of [30, 120, 225, 330, 420]) {
+			const g = newVersus(mode, `overlap-${x}`);
+			g.start();
+			for (let i = 0; i < g.DROP_COOLTIME; i++) g.tick();
+			g.receiveAttack(5);
+			g.drop(x);
+			const dropped = g.engine.world.bodies.find(b => !b.isStatic && !b.isSensor && b.label !== DropAndFusionGame.STONE_LABEL)!;
+			for (const s of stones(g)) {
+				expect(Matter.Collision.collides(s, dropped)).toBeNull();
+			}
+		}
+	});
+
+	// SPACE でも石ははみ出しの判定領域から抜ける (重力が弱いので、玉と同じく下向きの
+	// 力が要る)。
+	test('space: 降った石はすぐに判定領域 (y < 100) を抜ける', () => {
+		const g = newVersus('space', 'space-stones');
+		g.start();
+		for (let i = 0; i < g.DROP_COOLTIME; i++) g.tick();
+		g.receiveAttack(5);
+		g.drop(225);
+		const grace = g.msToFrame(g.OVERFLOW_GRACE_MS);
+		for (let i = 0; i < grace / 2; i++) g.tick();
+		for (const s of stones(g)) expect(s.position.y).toBeGreaterThan(100);
+	});
+
+	// 相手から届く数は検査する。NaN は予告を壊し、以後の攻撃も消す。
+	test('受け取る数が壊れていても予告は壊れない', () => {
+		const g = newVersus('normal', 's');
+		g.start();
+		g.receiveAttack(Number.NaN);
+		g.receiveAttack(Number.POSITIVE_INFINITY);
+		g.receiveAttack(-3);
+		expect(g.pendingGarbage).toBe(0);
+		g.receiveAttack(3);
+		expect(g.pendingGarbage).toBe(3);
+		g.receiveAttack(1e9);
+		expect(g.pendingGarbage).toBe(VERSUS_RULES.maxPendingGarbage);
+	});
+
+	// 対戦かどうかは記録に残らないので、対戦の指定をせずに作ったゲームでも、記録の
+	// garbage を当てれば同じ位置に石が降る。
+	test('対戦の指定が無くても、記録の garbage で同じ位置に石が降る', () => {
+		const logs = [{ frame: 40, operation: 'drop' as const, x: 200 }, { frame: 40, operation: 'garbage' as const, count: 4 }];
+
+		function run(versus: boolean) {
+			const g = new DropAndFusionGame({ seed: 'rep', gameMode: 'normal', getMonoRenderOptions: () => ({}), versus });
+			g.start();
+			let next = 0;
+			while (g.frame <= 40) {
+				while (next < logs.length && logs[next].frame === g.frame) g.applyLog(logs[next++]);
+				g.tick();
+			}
+			return stones(g).map(b => [Math.round(b.position.x), Math.round(b.position.y)]);
+		}
+
+		expect(run(false)).toHaveLength(4);
+		expect(run(false)).toEqual(run(true));
+	});
+
+	// 石が消える (合体) ところまで含めて、対戦の指定なしのリプレイが実際の対局と
+	// 同じ結末になる。消し方が指定に依存していると、石は同じ位置に降るのに消えずに
+	// 残ってずれる (#3229 のレビュー 2 周目で実測)。
+	test.each(['a', 'b', 'c'])('対戦の指定なしのリプレイも同じ結末になる (%s)', (seed) => {
+		const live = newVersus('normal', `live-${seed}`);
+		const rng = botRng(seed.charCodeAt(0));
+		let liveScore = 0;
+		let liveCleared = 0;
+		let over = false;
+		live.on('changeScore', v => { liveScore = v; });
+		live.on('stonesCleared', n => { liveCleared += n; });
+		live.on('gameOver', () => { over = true; });
+		live.start();
+		while (!over && live.frame < 60 * 60 * 2) {
+			if (live.frame % 35 === 0) live.drop(30 + rng() * 390);
+			if (live.frame % 40 === 0) live.receiveAttack(1 + Math.floor(rng() * 5));
+			if (!live.tick()) break;
+		}
+		expect(liveCleared).toBeGreaterThan(0);
+
+		const logs = DropAndFusionGame.deserializeLogs(DropAndFusionGame.serializeLogs(live.getLogs()));
+		const g = newGame('normal', `live-${seed}`);
+		let score = 0;
+		g.on('changeScore', v => { score = v; });
+		g.start();
+		let next = 0;
+		while (g.frame < live.frame) {
+			while (next < logs.length && logs[next].frame === g.frame) g.applyLog(logs[next++]);
+			if (!g.tick()) break;
+		}
+		expect(g.frame).toBe(live.frame);
+		expect(score).toBe(liveScore);
+		expect(stones(g)).toHaveLength(stones(live).length);
+	}, 30000);
+
+	// 記録から来る数も上限で頭打ちにする (壊れた途中保存でタブを固めない)。
+	test('記録の garbage も一度に降る上限を超えない', () => {
+		const g = newGame('normal', 's');
+		g.start();
+		g.applyLog({ frame: 0, operation: 'garbage', count: 1e7 });
+		expect(stones(g)).toHaveLength(VERSUS_RULES.maxGarbagePerDrop);
+	});
+
+	// 終わった盤面には石が届かない (予告も増えない)。
+	test('ゲームオーバーの後は石を受け取らない', () => {
+		const g = newVersus('normal', 's');
+		g.start();
+		g.surrender();
+		g.receiveAttack(3);
+		expect(g.pendingGarbage).toBe(0);
+	});
+
+	// 1 人用は変わらない: 攻撃は出ず、石も届かない。
+	test('1 人用では攻撃も石も出ない', () => {
+		const g = newGame('normal', 's');
+		g.start();
+		const got = attacks(g);
+		const r = radiusOf(g, 3);
+		// 対戦なら 1 と 2 を送る 3 連続の合体。
+		for (const x of [80, 200, 320]) {
+			internals(g).fusion(place(g, 3, x, 300), place(g, 3, x + (2 * r), 300));
+		}
+		g.receiveAttack(5);
+		for (let i = 0; i < g.DROP_COOLTIME; i++) g.tick();
+		g.drop(100);
+		expect(got).toEqual([]);
+		expect(g.pendingGarbage).toBe(0);
+		expect(stones(g)).toHaveLength(0);
+	});
+
+	// 同じシードと記録から、石を含めて同じ結末になる (受け手の記録だけで再現できる)。
+	test('石を含めて同じシードと記録から同じ結末になる', () => {
+		function play() {
+			const g = newVersus('normal', 'versus-seed');
+			const rng = botRng(7);
+			let score = 0;
+			let over = false;
+			g.on('changeScore', v => { score = v; });
+			g.on('gameOver', () => { over = true; });
+			g.start();
+			while (!over && g.frame < 60 * 60 * 2) {
+				if (g.frame % 35 === 0) g.drop(30 + rng() * 390);
+				// 相手からの攻撃が不規則に届く。
+				if (g.frame % 97 === 0) g.receiveAttack(1 + Math.floor(rng() * 4));
+				if (!g.tick()) break;
+			}
+			return { g, score, frame: g.frame };
+		}
+
+		const first = play();
+		const serialized = DropAndFusionGame.serializeLogs(first.g.getLogs());
+		expect(serialized.some(l => l[1] === 3)).toBe(true);
+
+		const logs = DropAndFusionGame.deserializeLogs(serialized);
+		const g = newVersus('normal', 'versus-seed');
+		let score = 0;
+		g.on('changeScore', v => { score = v; });
+		g.start();
+		let next = 0;
+		while (g.frame < first.frame) {
+			while (next < logs.length && logs[next].frame === g.frame) g.applyLog(logs[next++]);
+			if (!g.tick()) break;
+		}
+		expect(g.frame).toBe(first.frame);
+		expect(score).toBe(first.score);
+		const pos = (x: DropAndFusionGame) => stones(x).map(b => [Math.round(b.position.x), Math.round(b.position.y)]);
+		expect(pos(g)).toEqual(pos(first.g));
+		expect(DropAndFusionGame.serializeLogs(g.getLogs())).toEqual(serialized);
+	}, 30000);
+
+	// 石の位置は専用の乱数で決める。玉の順番の乱数と共有すると、石が降るたびに自分の
+	// 玉の順番が変わる (同じシードで遊ぶ両者の順番がずれる)。
+	test('石が降っても自分の玉の順番は変わらない', () => {
+		function sequence(withGarbage: boolean) {
+			const g = newVersus('normal', 'seq');
+			// 落とす直前の「次の玉」を並べる (monoAdded は合体でできた玉でも出るので、
+			// 石で合体が変わると列が変わる)。
+			const seen: string[] = [];
+			let stock: { mono: { id: string } }[] = [];
+			g.on('changeStock', v => { stock = v; });
+			g.start();
+			for (let i = 0; i < 8; i++) {
+				for (let t = 0; t < g.DROP_COOLTIME; t++) g.tick();
+				if (withGarbage) g.receiveAttack(3);
+				seen.push(stock[0].mono.id);
+				g.drop(225);
+			}
+			return seen;
+		}
+
+		const plain = sequence(false);
+		expect(sequence(true)).toEqual(plain);
+		// 並びが自明に一致する (全部同じ玉) のでは確かめにならない。
+		expect(new Set(plain).size).toBeGreaterThan(1);
+	});
+
+	test('記録の garbage は直列化して戻せる', () => {
+		const logs = [{ frame: 10, operation: 'drop' as const, x: 100 }, { frame: 10, operation: 'garbage' as const, count: 3 }];
+		expect(DropAndFusionGame.deserializeLogs(DropAndFusionGame.serializeLogs(logs))).toEqual(logs);
 	});
 });

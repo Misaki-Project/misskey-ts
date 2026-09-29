@@ -77,7 +77,7 @@ export function parseGameMode(mode: string): { base: BaseGameMode; physics: Game
 	return { base: base as BaseGameMode, physics: physics as GamePhysics };
 }
 
-type Log = {
+export type Log = {
 	frame: number;
 	operation: 'drop';
 	x: number;
@@ -87,7 +87,34 @@ type Log = {
 } | {
 	frame: number;
 	operation: 'surrender';
+} | {
+	// mk-go (#3229): 対戦で、相手から届いたおじゃま石が降った。石は受け手の盤面で
+	// 降らせるので、受け手の記録に残す (リプレイは「シード + 記録」だけで再現できる)。
+	// 1 人用の記録には現れない。
+	frame: number;
+	operation: 'garbage';
+	count: number;
 };
+
+/**
+ * The rules of the versus mode (mk-go, #3229).
+ */
+export const VERSUS_RULES = {
+	// 一度に降るおじゃま石の上限。残りは次の手番に回す。一度に大量に降ると勝負が
+	// 1 回で決まりやすく、物理演算も荒れる。
+	maxGarbagePerDrop: 5,
+	// 予告に積める石の上限 (壊れた値や改造した相手から、終わらない数が届かないように)。
+	// 盤面はこれよりずっと少ない数で埋まるので、遊びには影響しない。
+	maxPendingGarbage: 200,
+	// 消した石 N 個で 1 個を相手に送る (端数は持ち越す)。
+	stonesPerAttack: 2,
+	// おじゃま石の大きさ (この Lv の玉と同じ)。
+	stoneLevel: 2,
+	// 合体した玉と石の間がこの距離 (px) 以内なら「触れている」とみなす。玉は積み
+	// 上がった状態でも物理演算の上ではわずかに離れていることがあるので、0 にすると
+	// 見た目は触れているのに消えない。
+	touchMargin: 2,
+} as const;
 
 export class DropAndFusionGame extends EventEmitter<{
 	changeScore: (newScore: number) => void;
@@ -103,6 +130,21 @@ export class DropAndFusionGame extends EventEmitter<{
 	 * `true` while at least one mono stays in the overflow area.
 	 */
 	overflowWarning: (overflowing: boolean) => void;
+	/**
+	 * Emitted in the versus mode when this board sends stones to the opponent
+	 * (mk-go, #3229). **リプレイ中も出る** (対戦の指定をして作った場合) ので、相手へ
+	 * 送るのは実際の対局のときだけにすること。
+	 */
+	attack: (count: number) => void;
+	/**
+	 * Emitted in the versus mode when the number of stones waiting to fall on
+	 * this board changes (mk-go, #3229).
+	 */
+	changePendingGarbage: (count: number) => void;
+	/**
+	 * Emitted when stones are cleared by a fusion (mk-go, #3229).
+	 */
+	stonesCleared: (count: number) => void;
 	gameOver: () => void;
 }> {
 	private PHYSICS_QUALITY_FACTOR = 16; // 低いほどパフォーマンスが高いがガタガタして安定しなくなる、逆に高すぎても何故か不安定になる
@@ -166,6 +208,20 @@ export class DropAndFusionGame extends EventEmitter<{
 	private stock: { id: string; mono: Mono }[] = [];
 	private holding: { id: string; mono: Mono } | null = null;
 
+	// mk-go (#3229): 石の降る位置の乱数。玉の順番 (rng) とは分ける — 共有すると、石が
+	// 降るたびに自分の玉の順番が変わる。**対戦でなくても作る** — リプレイは記録の
+	// garbage を当てるだけで石を降らせる (対戦かどうかは記録に残らないので、作る側が
+	// 指定を忘れても石の位置がずれないようにする)。
+	private garbageRng: () => number;
+
+	// mk-go (#3229): 対戦。null なら 1 人用 (攻撃も予告も出ない)。
+	private versus: {
+		// 相手から届いて、まだ降っていない石の数。
+		pending: number;
+		// 消した石の数の端数 (stonesPerAttack に満たない分)。
+		clearedCarry: number;
+	} | null = null;
+
 	public get monoDefinitions() {
 		switch (this.baseMode) {
 			case 'normal': return NORAML_MONOS;
@@ -195,6 +251,7 @@ export class DropAndFusionGame extends EventEmitter<{
 	}
 
 	private getMonoRenderOptions: null | ((mono: Mono) => Partial<Matter.IBodyRenderOptions>) = null;
+	private getStoneRenderOptions: null | (() => Partial<Matter.IBodyRenderOptions>) = null;
 
 	public replayPlaybackRate = 1;
 
@@ -202,6 +259,11 @@ export class DropAndFusionGame extends EventEmitter<{
 		seed: string;
 		gameMode: DropAndFusionGame['gameMode'];
 		getMonoRenderOptions?: (mono: Mono) => Partial<Matter.IBodyRenderOptions>;
+		/**
+		 * Enables the versus mode (mk-go, #3229). 1 人用では渡さない。
+		 */
+		versus?: boolean;
+		getStoneRenderOptions?: () => Partial<Matter.IBodyRenderOptions>;
 	}) {
 		super();
 
@@ -215,7 +277,12 @@ export class DropAndFusionGame extends EventEmitter<{
 		this.baseMode = parsed.base;
 		this.physics = parsed.physics;
 		this.getMonoRenderOptions = env.getMonoRenderOptions ?? null;
+		this.getStoneRenderOptions = env.getStoneRenderOptions ?? null;
 		this.rng = seedrandom(env.seed);
+		this.garbageRng = seedrandom(`${env.seed}:garbage`);
+		if (env.versus) {
+			this.versus = { pending: 0, clearedCarry: 0 };
+		}
 
 		// sweetsモードは重いため
 		const physicsQualityFactor = this.baseMode === 'sweets' ? 4 : this.PHYSICS_QUALITY_FACTOR;
@@ -341,6 +408,11 @@ export class DropAndFusionGame extends EventEmitter<{
 	 * 玉どうしも壁も強く引っかかり、転がらずにその場で止まる。跳ねない。値は
 	 * テストの計測で決めた (drop-and-fusion.test.ts の #3216)。
 	 */
+	/**
+	 * The label of a garbage stone in the versus mode (mk-go, #3229).
+	 */
+	public static readonly STONE_LABEL = '_stone_';
+
 	private static readonly FRICTION_PHYSICS = {
 		restitution: 0,
 		friction: 1,
@@ -356,12 +428,12 @@ export class DropAndFusionGame extends EventEmitter<{
 		monoGrip: 0.2,
 	};
 
-	private createBody(mono: Mono, x: number, y: number) {
+	private createBody(mono: Mono, x: number, y: number, stone = false) {
 		const space = this.baseMode === 'space';
 		const bouncy = this.physics === 'bouncy';
 		const friction = this.physics === 'friction';
 		const options = {
-			label: mono.id,
+			label: stone ? DropAndFusionGame.STONE_LABEL : mono.id,
 			density: space ? 0.01 : ((mono.sizeX * mono.sizeY) / 10000),
 			restitution: space ? 0.5 : bouncy ? DropAndFusionGame.BOUNCY_PHYSICS.restitution : friction ? DropAndFusionGame.FRICTION_PHYSICS.restitution : 0.2,
 			frictionAir: space ? 0 : 0.01,
@@ -369,7 +441,9 @@ export class DropAndFusionGame extends EventEmitter<{
 			frictionStatic: space ? 0 : bouncy ? DropAndFusionGame.BOUNCY_PHYSICS.frictionStatic : friction ? DropAndFusionGame.FRICTION_PHYSICS.frictionStatic : 5,
 			slop: space ? 0.01 : 0.7,
 			//mass: 0,
-			render: this.getMonoRenderOptions ? this.getMonoRenderOptions(mono) : undefined,
+			render: stone
+				? (this.getStoneRenderOptions ? this.getStoneRenderOptions() : this.getMonoRenderOptions ? this.getMonoRenderOptions(mono) : undefined)
+				: (this.getMonoRenderOptions ? this.getMonoRenderOptions(mono) : undefined),
 		} satisfies Matter.IChamferableBodyDefinition;
 		if (mono.shape === 'circle') {
 			return Matter.Bodies.circle(x, y, mono.sizeX / 2, options);
@@ -395,6 +469,12 @@ export class DropAndFusionGame extends EventEmitter<{
 
 		const newX = (bodyA.position.x + bodyB.position.x) / 2;
 		const newY = (bodyA.position.y + bodyB.position.y) / 2;
+
+		// **消す石は、合体した 2 つを消す前に決める** (消した後は位置が分からない)。
+		// **対戦でなくても消す。** リプレイは対戦の指定なしで作られうるので、消し方が
+		// 指定に依存すると、石は同じ位置に降るのに消えずに残って結末がずれる。1 人用は
+		// 石が無いので何も起きない。
+		const clearedStones = this.stonesTouching([bodyA, bodyB]);
 
 		this.fusionReadyBodyIds = this.fusionReadyBodyIds.filter(x => x !== bodyA.id && x !== bodyB.id);
 		this.gameOverReadyBodyIds = this.gameOverReadyBodyIds.filter(x => x !== bodyA.id && x !== bodyB.id);
@@ -423,6 +503,9 @@ export class DropAndFusionGame extends EventEmitter<{
 			this.emit('monoAdded', nextMono);
 		}
 
+		this.clearStones(clearedStones);
+		this.fusionAttack(clearedStones.length);
+
 		const hasComboBonus = this.baseMode !== 'yen' && this.baseMode !== 'sweets';
 		const comboBonus = hasComboBonus ? 1 + ((this.combo - 1) / 5) : 1;
 		const additionalScore = Math.round(currentMono.score * comboBonus);
@@ -435,7 +518,8 @@ export class DropAndFusionGame extends EventEmitter<{
 		for (const pairs of event.pairs) {
 			const { bodyA, bodyB } = pairs;
 
-			const shouldFusion = (bodyA.label === bodyB.label) &&
+			// おじゃま石どうしは同じラベルでも合体しない (#3229)。
+			const shouldFusion = (bodyA.label === bodyB.label) && bodyA.label !== DropAndFusionGame.STONE_LABEL &&
 				!this.fusionReservedPairs.some(x =>
 					x.bodyA.id === bodyA.id ||
 					x.bodyA.id === bodyB.id ||
@@ -769,6 +853,11 @@ export class DropAndFusionGame extends EventEmitter<{
 
 		this.emit('dropped', x);
 		this.emit('monoAdded', head.mono);
+
+		// 届いている石は、受け手が玉を落とした後に降る (#3229)。**リプレイでは
+		// 何もしない** — リプレイは receiveAttack を呼ばないので pending が 0 で、石は
+		// 記録の garbage を当てて降らせる。
+		this.releaseGarbage();
 	}
 
 	public hold() {
@@ -816,6 +905,9 @@ export class DropAndFusionGame extends EventEmitter<{
 				case 'surrender':
 					_logs.push([frameDelta, 2]);
 					break;
+				case 'garbage':
+					_logs.push([frameDelta, 3, log.count]);
+					break;
 			}
 		}
 
@@ -853,10 +945,166 @@ export class DropAndFusionGame extends EventEmitter<{
 						operation: 'surrender',
 					});
 					break;
+				case 3:
+					_logs.push({
+						frame,
+						operation: 'garbage',
+						count: log[2],
+					});
+					break;
 			}
 		}
 
 		return _logs;
+	}
+
+	/**
+	 * Applies one recorded operation (mk-go, #3229). リプレイと途中保存の早送りは
+	 * これを通す — 種類ごとの分岐を呼び出し側に書くと、種類を足したときに取りこぼす
+	 * (drop / hold 以外を surrender として扱う形が実際にあった)。
+	 */
+	public applyLog(log: Log) {
+		switch (log.operation) {
+			case 'drop': this.drop(log.x); break;
+			case 'hold': this.hold(); break;
+			case 'surrender': this.surrender(); break;
+			case 'garbage': this.dropGarbage(log.count); break;
+		}
+	}
+
+	/**
+	 * Queues stones sent by the opponent (versus mode, mk-go #3229). They fall
+	 * after this board's next drop.
+	 */
+	public receiveAttack(count: number) {
+		// **相手から届く値なので検査する。** NaN が入ると予告が NaN のまま戻らず、以後の
+		// 攻撃も全部消える。Infinity は毎手番 5 個を永遠に降らせる。
+		if (!this.versus || this.isGameOver || !Number.isFinite(count) || count <= 0) return;
+		this.versus.pending = Math.min(VERSUS_RULES.maxPendingGarbage, this.versus.pending + Math.floor(count));
+		this.emit('changePendingGarbage', this.versus.pending);
+	}
+
+	/**
+	 * The number of stones waiting to fall (versus mode).
+	 */
+	public get pendingGarbage() {
+		return this.versus?.pending ?? 0;
+	}
+
+	private releaseGarbage() {
+		if (!this.versus || this.versus.pending <= 0) return;
+		const count = Math.min(this.versus.pending, VERSUS_RULES.maxGarbagePerDrop);
+		this.versus.pending -= count;
+		this.emit('changePendingGarbage', this.versus.pending);
+		this.dropGarbage(count);
+	}
+
+	/**
+	 * Drops stones on this board and records it. 位置は石専用の乱数で決める。
+	 */
+	private dropGarbage(_count: number) {
+		if (this.isGameOver || !Number.isFinite(_count) || _count <= 0) return;
+		// 記録から来る数も上限で頭打ちにする (実際の対戦では超えない)。壊れた途中保存に
+		// 大きな数が入っていると、玉を何百万個も作ってタブが固まる。
+		const count = Math.min(Math.floor(_count), VERSUS_RULES.maxGarbagePerDrop);
+		this.logs.push({ frame: this.frame, operation: 'garbage', count });
+
+		const lv = this.monoDefinitions.find(x => x.level === VERSUS_RULES.stoneLevel);
+		if (lv == null) throw new Error('stone mono not found');
+		// **石は形によらず円にする** (SQUARE の Lv2 は四角、SWEETS は多角形)。触れて
+		// いるかの判定 (distanceBetween) が円を前提にしている。
+		const stoneMono: Mono = { ...lv, shape: 'circle', sizeY: lv.sizeX };
+		// 横に等分した枠へ 1 個ずつ置く (同じ場所に重ねて出すと、生まれた瞬間に
+		// 弾け飛ぶ)。枠の順番を石の乱数で並べ替える。
+		const left = this.PLAYAREA_MARGIN + (stoneMono.sizeX / 2);
+		const right = this.GAME_WIDTH - this.PLAYAREA_MARGIN - (stoneMono.sizeX / 2);
+		const slots = Math.max(1, Math.floor((right - left) / stoneMono.sizeX) + 1);
+		const order = [...Array(slots).keys()];
+		for (let i = order.length - 1; i > 0; i--) {
+			const j = Math.floor(this.garbageRng() * (i + 1));
+			[order[i], order[j]] = [order[j], order[i]];
+		}
+		for (let i = 0; i < count; i++) {
+			const slot = order[i % slots];
+			const row = Math.floor(i / slots);
+			const x = slots === 1 ? (left + right) / 2 : left + ((right - left) * slot / (slots - 1));
+			// **落とした玉 (上端が y=50) より上に出す。** 同じ高さに出すと、今落とした玉と
+			// 重なって弾き、狙った位置をずらす (#3229 のレビューで実測: 約 18% の石が重なった)。
+			const y = 50 - (stoneMono.sizeY / 2) - 1 - (row * stoneMono.sizeY);
+			const body = this.createBody(stoneMono, x, y, true);
+			// SPACE は重力が弱いので、玉と同じく下向きの力を与える。与えないと石が
+			// はみ出しの判定領域に居続けて終わる (実測: 30 シード中 3 回)。
+			if (this.baseMode === 'space') {
+				Matter.Body.applyForce(body, body.position, {
+					x: 0,
+					y: (Math.PI * stoneMono.sizeX * stoneMono.sizeY) / 65536,
+				});
+			}
+			Matter.Composite.add(this.engine.world, body);
+		}
+	}
+
+	/**
+	 * Stones touching any of the bodies (versus mode).
+	 */
+	private stonesTouching(bodies: Matter.Body[]): Matter.Body[] {
+		const stones = this.engine.world.bodies.filter(b => b.label === DropAndFusionGame.STONE_LABEL);
+		if (stones.length === 0) return [];
+		return stones.filter(stone => bodies.some(b => this.distanceBetween(stone, b) <= VERSUS_RULES.touchMargin));
+	}
+
+	/**
+	 * The gap between two bodies (0 when they overlap). 石は円なので、石の中心から
+	 * 相手の輪郭までの距離から半径を引く。
+	 */
+	private distanceBetween(stone: Matter.Body, other: Matter.Body): number {
+		if (Matter.Collision.collides(stone, other) != null) return 0;
+		const r = stone.circleRadius ?? ((stone.bounds.max.x - stone.bounds.min.x) / 2);
+		const c = stone.position;
+		let min = Infinity;
+		const parts = other.parts.length > 1 ? other.parts.slice(1) : other.parts;
+		for (const part of parts) {
+			const vs = part.vertices;
+			for (let i = 0; i < vs.length; i++) {
+				const a = vs[i];
+				const b = vs[(i + 1) % vs.length];
+				const dx = b.x - a.x;
+				const dy = b.y - a.y;
+				const len2 = (dx * dx) + (dy * dy);
+				const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, (((c.x - a.x) * dx) + ((c.y - a.y) * dy)) / len2));
+				const px = a.x + (t * dx) - c.x;
+				const py = a.y + (t * dy) - c.y;
+				min = Math.min(min, Math.sqrt((px * px) + (py * py)));
+			}
+		}
+		return Math.max(0, min - r);
+	}
+
+	/**
+	 * Removes stones cleared by a fusion (versus mode).
+	 */
+	private clearStones(stones: Matter.Body[]) {
+		if (stones.length === 0) return;
+		Matter.Composite.remove(this.engine.world, stones);
+		const ids = new Set(stones.map(b => b.id));
+		this.gameOverReadyBodyIds = this.gameOverReadyBodyIds.filter(x => !ids.has(x));
+		this.emit('stonesCleared', stones.length);
+	}
+
+	/**
+	 * Sends the attack of one fusion (versus mode).
+	 *
+	 * 攻撃はコンボ (2 コンボ目から 1 コンボごとに +1) + 消した石 (stonesPerAttack 個で
+	 * 1 個、端数は持ち越す)。**合体した玉の大きさは数えない** — 数えると合体のたびに
+	 * 送ることになり、試算で 1 人あたり毎分 100 個を超えて相手がすぐ埋まった (#3231)。
+	 */
+	private fusionAttack(clearedCount: number) {
+		if (!this.versus) return;
+		this.versus.clearedCarry += clearedCount;
+		const fromStones = Math.floor(this.versus.clearedCarry / VERSUS_RULES.stonesPerAttack);
+		this.versus.clearedCarry %= VERSUS_RULES.stonesPerAttack;
+		const attack = Math.max(0, this.combo - 1) + fromStones;
+		if (attack > 0) this.emit('attack', attack);
 	}
 
 	public dispose() {

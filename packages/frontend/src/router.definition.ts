@@ -633,6 +633,11 @@ export const ROUTE_DEF = [{
 	component: page(() => import('@/pages/drop-and-fusion.vue')),
 	loginRequired: true,
 }, {
+	// mk-go (#3231): バブルゲームの 1:1 対戦。
+	path: '/bubble-game/versus/:matchId',
+	component: page(() => import('@/pages/drop-and-fusion.versus.vue')),
+	loginRequired: true,
+}, {
 	path: '/reversi',
 	component: page(() => import('@/pages/reversi/index.vue')),
 	loginRequired: false,

@@ -46,6 +46,33 @@ SPDX-License-Identifier: AGPL-3.0-only
 						</div>
 					</div>
 				</div>
+				<!-- mk-go (#3231): 1:1 の対戦。モードと物理は上で選んだものを使う。 -->
+				<div class="_woodenFrame">
+					<div class="_woodenFrameInner">
+						<div class="_gaps_s" style="padding: 16px;">
+							<div><b>{{ i18n.ts._mkgoBubbleGame._versus.section }}</b></div>
+							<div style="font-size: 90%;">{{ i18n.ts._mkgoBubbleGame._versus.description }}</div>
+							<div style="font-size: 90%; opacity: 0.8;">{{ i18n.tsx._mkgoBubbleGame._versus.inviteHint({ mode: dropAndFusionModeLabel(gameMode) }) }}</div>
+							<div class="_buttonsCenter">
+								<MkButton primary rounded @click="inviteVersus">{{ i18n.ts._mkgoBubbleGame._versus.inviteButton }}</MkButton>
+							</div>
+							<template v-if="versusInvitations.length > 0">
+								<div><b>{{ i18n.ts._mkgoBubbleGame._versus.invitations }}</b></div>
+								<div v-for="inv in versusInvitations" :key="inv.id" :class="$style.invitation">
+									<MkAvatar v-if="inv.user1" :user="inv.user1" style="width: 28px; height: 28px; margin-right: 8px;"/>
+									<div style="min-width: 0;">
+										<div v-if="inv.user1"><MkUserName :user="inv.user1" :nowrap="true"/></div>
+										<div style="font-size: 85%; opacity: 0.8;">{{ dropAndFusionModeLabel(inv.gameMode) }}</div>
+									</div>
+									<div style="margin-left: auto;" class="_buttons">
+										<MkButton primary small rounded @click="acceptVersus(inv)">{{ i18n.ts._mkgoBubbleGame._versus.acceptInvitation }}</MkButton>
+										<MkButton small rounded @click="declineVersus(inv)">{{ i18n.ts._mkgoBubbleGame._versus.declineInvitation }}</MkButton>
+									</div>
+								</div>
+							</template>
+						</div>
+					</div>
+				</div>
 				<div class="_woodenFrame">
 					<div class="_woodenFrameInner">
 						<div class="_gaps_s" style="padding: 16px;">
@@ -90,7 +117,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 </template>
 
 <script lang="ts" setup>
-import { computed, ref, watch } from 'vue';
+import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue';
 import * as Misskey from 'misskey-js';
 import { DropAndFusionGame, gameModeOf } from 'misskey-bubble-game';
 import XGame from './drop-and-fusion.game.vue';
@@ -105,6 +132,9 @@ import * as os from '@/os.js';
 import { clearDropAndFusionSave, isDropAndFusionSaveExpired, loadDropAndFusionSave } from '@/utility/drop-and-fusion-save.js';
 import type { DropAndFusionSave } from '@/utility/drop-and-fusion-save.js';
 import { dropAndFusionModeLabel, dropAndFusionScoreUnit } from '@/utility/drop-and-fusion-mode.js';
+import { connectVersusInvitations, versusApi } from '@/utility/bubble-versus.js';
+import type { VersusConnection, VersusMatch } from '@/utility/bubble-versus.js';
+import { useRouter } from '@/router.js';
 
 const {
 	model: baseMode,
@@ -220,6 +250,64 @@ function onGameEnd() {
 	gameStarted.value = false;
 }
 
+// mk-go (#3231): 対戦の招待。
+const router = useRouter();
+const versusInvitations = ref<VersusMatch[]>([]);
+let versusConnection: VersusConnection | null = null;
+
+async function fetchVersusInvitations() {
+	try {
+		versusInvitations.value = await versusApi<VersusMatch[]>('invitations');
+	} catch {
+		// 一覧が取れなくても一人で遊ぶのには関係ないので、黙って空のままにする。
+	}
+}
+
+function openVersus(matchId: string) {
+	router.push('/bubble-game/versus/:matchId', { params: { matchId } });
+}
+
+async function inviteVersus() {
+	const user = await os.selectUser({ includeSelf: false, localOnly: true });
+	if (user == null) return;
+	const match = await os.apiWithDialog('bubble-game/versus/invite' as never, {
+		userId: user.id,
+		gameMode: gameMode.value,
+	} as never) as VersusMatch;
+	openVersus(match.id);
+}
+
+async function acceptVersus(inv: VersusMatch) {
+	await os.apiWithDialog('bubble-game/versus/accept' as never, { matchId: inv.id } as never);
+	openVersus(inv.id);
+}
+
+async function declineVersus(inv: VersusMatch) {
+	await os.apiWithDialog('bubble-game/versus/decline' as never, { matchId: inv.id } as never);
+	versusInvitations.value = versusInvitations.value.filter(x => x.id !== inv.id);
+}
+
+onMounted(() => {
+	fetchVersusInvitations();
+	versusConnection = connectVersusInvitations();
+	versusConnection.on('invited', (x: { user: { username: string; name: string | null } }) => {
+		fetchVersusInvitations();
+		os.toast(i18n.tsx._mkgoBubbleGame._versus.newInvitation({ name: x.user.name ?? x.user.username }));
+	});
+	// 取り消された招待は一覧から消す。
+	versusConnection.on('canceled', () => { fetchVersusInvitations(); });
+});
+
+// ページはキャッシュされるので、戻ってきたら一覧を取り直す (受けた招待が残る)。
+onActivated(() => {
+	fetchVersusInvitations();
+});
+
+onUnmounted(() => {
+	versusConnection?.dispose();
+	versusConnection = null;
+});
+
 definePage(() => ({
 	title: i18n.ts.bubbleGame,
 	icon: 'ti ti-device-gamepad',
@@ -246,6 +334,12 @@ definePage(() => ({
 	* {
 		user-select: none;
 	}
+}
+
+.invitation {
+	display: flex;
+	align-items: center;
+	padding-top: 4px;
 }
 
 .rankingRecord {

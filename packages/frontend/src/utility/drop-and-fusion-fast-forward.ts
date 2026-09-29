@@ -41,10 +41,9 @@ export async function fastForwardGame(game: DropAndFusionGame, logs: Logs, opts:
 		while (game.frame <= lastFrame && now() < deadline) {
 			// 同じフレームに操作が 2 つ (保持してすぐ落とす) あり得るので、全部当てる。
 			while (next < logs.length && logs[next].frame === game.frame) {
-				const log = logs[next++];
-				if (log.operation === 'drop') game.drop(log.x);
-				else if (log.operation === 'hold') game.hold();
-				else game.surrender();
+				// 種類ごとの分岐はエンジン側 (applyLog) に任せる。ここで書くと、種類が
+				// 増えたとき (対戦の garbage、#3229) に surrender として扱ってしまう。
+				game.applyLog(logs[next++]);
 			}
 			if (!game.tick()) return 'gameOver';
 		}

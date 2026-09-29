@@ -95,7 +95,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 				</div>
 				<div v-if="isGameOver && !replaying" :class="$style.gameOverLabel">
 					<div class="_gaps_s">
-						<img src="/client-assets/drop-and-fusion/gameover.png" style="width: 200px; max-width: 100%; display: block; margin: auto; margin-bottom: -5px;"/>
+						<div v-if="timeUp" :class="$style.timeUpLabel">{{ i18n.ts._mkgoBubbleGame._versus.timeUp }}</div>
+						<img v-else src="/client-assets/drop-and-fusion/gameover.png" style="width: 200px; max-width: 100%; display: block; margin: auto; margin-bottom: -5px;"/>
 						<div>{{ i18n.ts._bubbleGame._score.score }}: <MkNumber :value="score"/>{{ dropAndFusionScoreUnit(gameMode) }}</div>
 						<div>{{ i18n.ts._bubbleGame._score.maxChain }}: <MkNumber :value="maxCombo"/></div>
 						<div v-if="baseMode === 'yen'">
@@ -133,7 +134,11 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 			<div v-if="isGameOver" class="_woodenFrame">
 				<div class="_woodenFrameInner">
-					<div class="_buttonsCenter">
+					<!-- mk-go (#3231): 対戦ではタイトルへ戻る・共有は対戦の画面が受け持つ。 -->
+					<div v-if="versus != null" class="_buttonsCenter">
+						<MkButton primary rounded @click="replay">{{ i18n.ts.showReplay }}</MkButton>
+					</div>
+					<div v-else class="_buttonsCenter">
 						<MkButton primary rounded @click="backToTitle">{{ i18n.ts.backToTitle }}</MkButton>
 						<MkButton primary rounded @click="replay">{{ i18n.ts.showReplay }}</MkButton>
 						<MkButton primary rounded @click="share">{{ i18n.ts.share }}</MkButton>
@@ -146,7 +151,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<div class="_woodenFrame" style="flex: 1; margin-right: 10px;">
 					<div class="_woodenFrameInner">
 						<div>{{ i18n.ts._bubbleGame._score.score }}: <MkNumber :value="score"/>{{ dropAndFusionScoreUnit(gameMode) }}</div>
-						<div>{{ i18n.ts._bubbleGame._score.highScore }}: <b v-if="highScore"><MkNumber :value="highScore"/>{{ dropAndFusionScoreUnit(gameMode) }}</b><b v-else>-</b></div>
+						<div v-if="versus == null">{{ i18n.ts._bubbleGame._score.highScore }}: <b v-if="highScore"><MkNumber :value="highScore"/>{{ dropAndFusionScoreUnit(gameMode) }}</b><b v-else>-</b></div>
+						<div v-else>{{ i18n.ts._mkgoBubbleGame._versus.pendingStones }}: <b><MkNumber :value="pendingGarbage"/></b></div>
 						<div v-if="baseMode === 'yen'">
 							{{ i18n.ts._bubbleGame._score.scoreYen }}:
 							<I18n :src="i18n.ts._bubbleGame._score.yen" tag="b">
@@ -190,7 +196,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 			<div class="_woodenFrame">
 				<div class="_woodenFrameInner">
 					<MkButton v-if="!isGameOver && !replaying" full danger @click="surrender">{{ i18n.ts.surrender }}</MkButton>
-					<MkButton v-else full @click="restart">{{ i18n.ts.gameRetry }}</MkButton>
+					<MkButton v-else-if="versus == null" full @click="restart">{{ i18n.ts.gameRetry }}</MkButton>
 				</div>
 			</div>
 		</div>
@@ -226,6 +232,8 @@ import { fastForwardGame } from '@/utility/drop-and-fusion-fast-forward.js';
 import type { FastForwardResult } from '@/utility/drop-and-fusion-fast-forward.js';
 import type { DropAndFusionSave } from '@/utility/drop-and-fusion-save.js';
 import { dropAndFusionModeLabel, dropAndFusionScoreUnit } from '@/utility/drop-and-fusion-mode.js';
+import type { VersusBoardState, VersusReport } from '@/utility/bubble-versus.js';
+import { compactBoard } from '@/utility/bubble-versus-rules.js';
 
 type FrontendMonoDefinition = {
 	id: string;
@@ -533,10 +541,21 @@ const props = defineProps<{
 	 * checked that its version matches.
 	 */
 	resume?: DropAndFusionSave | null;
+	/**
+	 * Versus settings (mk-go, #3231). When set, the game uses the given seed,
+	 * waits until `startAtLocal` (this device's clock) before it starts, does not
+	 * save or register scores, and reports through the versus events.
+	 */
+	versus?: {
+		seed: string;
+		startAtLocal: number;
+	} | null;
 }>();
 
 const emit = defineEmits<{
 	(ev: 'end'): void;
+	(ev: 'versusAttack', count: number): void;
+	(ev: 'versusFinished', report: VersusReport): void;
 }>();
 
 // mk-go (#3216): 玉の見た目・単位・スコアの表示は形で決まる (物理では変わらない)。
@@ -565,7 +584,8 @@ function getMonoRenderOptions(mono: Mono) {
 }
 
 let viewScale = 1;
-let seed: string = Date.now().toString();
+// mk-go (#3231): 対戦では両者が同じシードで遊ぶ (サーバーが配る)。
+let seed: string = props.versus?.seed ?? Date.now().toString();
 let containerElRect: DOMRect | null = null;
 let logs: ReturnType<DropAndFusionGame['getLogs']> | null = null;
 let endedAtFrame = 0;
@@ -574,11 +594,29 @@ let renderer: Matter.Render | null = null;
 let monoTextures: Record<string, Blob> = {};
 let monoTextureUrls: Record<string, string> = {};
 let tickRaf: number | null = null;
-let game = new DropAndFusionGame({
-	seed: seed,
-	gameMode: props.gameMode,
-	getMonoRenderOptions,
-});
+
+function newGame() {
+	return new DropAndFusionGame({
+		seed: seed,
+		gameMode: props.gameMode,
+		getMonoRenderOptions,
+		// mk-go (#3231): 対戦ではおじゃま石を受け、合体で攻撃を出す。リプレイも同じ
+		// 設定で作らないと、石の出る記録が再現しない。
+		versus: props.versus != null,
+		getStoneRenderOptions,
+	});
+}
+
+// おじゃま石は形によらず灰色の円で描く (玉の画像と見分けが付くように)。
+function getStoneRenderOptions() {
+	return {
+		fillStyle: '#8a8a8a',
+		strokeStyle: '#5a5a5a',
+		lineWidth: 2,
+	};
+}
+
+let game = newGame();
 attachGameEvents();
 
 const containerEl = useTemplateRef('containerEl');
@@ -605,6 +643,16 @@ const replayPlaybackRate = ref(1);
 const currentFrame = ref(0);
 // mk-go (#3193): 判定領域に玉がとどまっている間 true。
 const overflowWarning = ref(false);
+// mk-go (#3231): 対戦で降るのを待っているおじゃま石の数。
+const pendingGarbage = ref(0);
+// 対戦で制限時間が来て止めた。ゲームオーバーとは別に表示する。
+const timeUp = ref(false);
+// 対戦の結果を 1 回だけ親へ渡すための印。
+let versusFinished = false;
+// 降参からのゲームオーバーを、普通のゲームオーバーと分けて報告する。
+let surrendering = false;
+// 対戦で終わったときの得点。
+let finalScore: number | null = null;
 // mk-go (#3192): 途中保存からの早送りの進捗 (0-1)。早送り中でなければ null。
 const fastForwardProgress = ref<number | null>(null);
 // 早送り中は効果音・演出・実績・保存を止める。リアクティブにする必要は無い
@@ -708,26 +756,18 @@ function tickReplay() {
 		// 本家は find で最初の 1 つだけを当てていて、途中保存の早送り (#3192) と結末が
 		// ずれる。
 		for (const log of logs!.filter(x => x.frame === game.frame)) {
-			switch (log.operation) {
-				case 'drop': {
-					game.drop(log.x);
-					break;
-				}
-				case 'hold': {
-					game.hold();
-					break;
-				}
-				case 'surrender': {
-					game.surrender();
-					break;
-				}
-				default:
-					break;
-			}
+			// 種類ごとの分岐はエンジン側 (applyLog) に任せる (#3229)。ここで書くと、
+			// 種類が増えたときに取りこぼす。
+			game.applyLog(log);
 		}
 
 		hasNextTick = game.tick();
 		currentFrame.value = game.frame;
+		// 時間切れで止めた対局はゲームオーバーにならないので、止めたフレームで終える。
+		if (timeUp.value && game.frame >= endedAtFrame) {
+			endReplay();
+			return;
+		}
 		if (!hasNextTick) break;
 	}
 
@@ -746,11 +786,7 @@ async function start() {
 		// 同じシードでゲームを作り直す。setup で作ったゲームはまだ始まっていない。
 		game.dispose();
 		seed = resume.s;
-		game = new DropAndFusionGame({
-			seed: seed,
-			gameMode: props.gameMode,
-			getMonoRenderOptions,
-		});
+		game = newGame();
 		attachGameEvents();
 	}
 
@@ -790,6 +826,20 @@ async function start() {
 		}
 	}
 	Matter.Render.run(renderer);
+	if (props.versus != null) {
+		// mk-go (#3231): 対戦は両者が同時に始める。開始時刻までは「READY」を出して待つ。
+		gameLoaded.value = true;
+		readyGo.value = 'ready';
+		const wait = Math.max(0, props.versus.startAtLocal - Date.now());
+		await new Promise(resolve => window.setTimeout(resolve, wait));
+		if (generation !== myGeneration) return;
+		tickRaf = window.requestAnimationFrame(tick);
+		readyGo.value = 'go';
+		window.setTimeout(() => {
+			readyGo.value = null;
+		}, 1000);
+		return;
+	}
 	// mk-go: 最初の rAF も tickRaf に控える。控えないと、この 1 フレームの間に dispose
 	// されたとき cancel されずに tick が回り続ける。
 	tickRaf = window.requestAnimationFrame(tick);
@@ -812,6 +862,8 @@ async function start() {
  */
 function saveProgress() {
 	if (replaying.value || fastForwarding || isGameOver.value) return;
+	// 対戦は途中から再開できない (相手の盤面と揃わなくなる)。
+	if (props.versus != null) return;
 	writeDropAndFusionSave({
 		v: game.GAME_VERSION,
 		m: props.gameMode,
@@ -822,14 +874,15 @@ function saveProgress() {
 
 function onClick(ev: PointerEvent) {
 	if (!containerElRect) return;
-	if (replaying.value) return;
+	// 対戦の時間切れはエンジンの外で止めるので、終わった後の操作もここで止める。
+	if (replaying.value || isGameOver.value) return;
 	const x = (ev.clientX - containerElRect.left) / viewScale;
 	game.drop(x);
 }
 
 function onTouchend(ev: TouchEvent) {
 	if (!containerElRect) return;
-	if (replaying.value) return;
+	if (replaying.value || isGameOver.value) return;
 	const x = (ev.changedTouches[0].clientX - containerElRect.left) / viewScale;
 	game.drop(x);
 }
@@ -851,6 +904,7 @@ function moveDropper(rect: DOMRect, x: number) {
 }
 
 function hold() {
+	if (replaying.value || isGameOver.value) return;
 	game.hold();
 }
 
@@ -860,16 +914,13 @@ async function surrender() {
 		text: i18n.ts.areYouSure,
 	});
 	if (canceled) return;
+	surrendering = true;
 	game.surrender();
 }
 
 async function restart() {
 	reset();
-	game = new DropAndFusionGame({
-		seed: seed,
-		gameMode: props.gameMode,
-		getMonoRenderOptions,
-	});
+	game = newGame();
 	attachGameEvents();
 	await start();
 }
@@ -910,11 +961,7 @@ function backToTitle() {
 function replay() {
 	replaying.value = true;
 	dispose();
-	game = new DropAndFusionGame({
-		seed: seed,
-		gameMode: props.gameMode,
-		getMonoRenderOptions,
-	});
+	game = newGame();
 	attachGameEvents();
 	const myGeneration = generation;
 	os.promiseDialog(loadMonoTextures(), async () => {
@@ -1040,6 +1087,16 @@ SCORE: ${score.value.toLocaleString()}${dropAndFusionScoreUnit(props.gameMode)}`
 function attachGameEvents() {
 	game.addListener('overflowWarning', value => {
 		overflowWarning.value = value;
+	});
+
+	game.addListener('changePendingGarbage', value => {
+		pendingGarbage.value = value;
+	});
+
+	game.addListener('attack', count => {
+		// リプレイと早送りでは攻撃を送らない (もう終わった対局の記録なので)。
+		if (props.versus == null || replaying.value || fastForwarding || versusFinished) return;
+		emit('versusAttack', count);
 	});
 
 	game.addListener('changeScore', value => {
@@ -1219,14 +1276,21 @@ function attachGameEvents() {
 			return;
 		}
 
-		// 終わったゲームは再開しない (#3192)。降参もここを通る。
-		clearDropAndFusionSave(props.gameMode);
-
 		logs = game.getLogs();
 		endedAtFrame = game.frame;
 		currentPick.value = null;
 		dropReady.value = false;
 		isGameOver.value = true;
+
+		if (props.versus != null) {
+			// mk-go (#3231): 対戦ではランキングにもハイスコアにも載せない (別の遊び方の
+			// 得点なので)。結果は親が対局の報告として送る。
+			finishVersus(surrendering ? 'surrender' : 'gameOver');
+			return;
+		}
+
+		// 終わったゲームは再開しない (#3192)。降参もここを通る。
+		clearDropAndFusionSave(props.gameMode);
 
 		misskeyApi('bubble-game/register', {
 			seed,
@@ -1257,6 +1321,70 @@ function attachGameEvents() {
 	});
 }
 
+function finishVersus(reason: VersusReport['reason']) {
+	if (versusFinished) return;
+	versusFinished = true;
+	finalScore = score.value;
+	emit('versusFinished', {
+		score: score.value,
+		frame: game.frame,
+		reason,
+		logs: DropAndFusionGame.serializeLogs(game.getLogs()),
+	});
+}
+
+/**
+ * Stops the versus game when the time limit is reached (mk-go, #3231).
+ * Does nothing when the game is already over.
+ */
+function finishByTimeUp() {
+	if (props.versus == null || versusFinished || isGameOver.value) return;
+	if (tickRaf) {
+		window.cancelAnimationFrame(tickRaf);
+		tickRaf = null;
+	}
+	logs = game.getLogs();
+	endedAtFrame = game.frame;
+	currentPick.value = null;
+	dropReady.value = false;
+	timeUp.value = true;
+	isGameOver.value = true;
+	finishVersus('timeUp');
+}
+
+/** Receives stones from the opponent (mk-go, #3231). */
+function receiveAttack(count: number) {
+	if (props.versus == null || versusFinished) return;
+	game.receiveAttack(count);
+}
+
+/** A summary of the board to show the opponent (mk-go, #3231). */
+function boardBodies() {
+	const out: { x: number; y: number; r: number; level: number }[] = [];
+	for (const body of game.engine.world.bodies) {
+		const stone = body.label === DropAndFusionGame.STONE_LABEL;
+		const mono = stone ? null : game.monoDefinitions.find(m => m.id === body.label);
+		// 壁や判定領域は送らない。
+		if (!stone && mono == null) continue;
+		const r = body.circleRadius ?? ((body.bounds.max.x - body.bounds.min.x) / 2);
+		out.push({ x: body.position.x, y: body.position.y, r, level: stone ? 0 : mono!.level });
+	}
+	return out;
+}
+
+function boardState(): VersusBoardState {
+	return {
+		board: compactBoard(boardBodies()),
+		// 終わった後のリプレイで得点が変わっても、相手へは最後の得点を知らせる。
+		score: finalScore ?? score.value,
+		pending: pendingGarbage.value,
+		danger: overflowWarning.value,
+		gameOver: isGameOver.value,
+	};
+}
+
+defineExpose({ finishByTimeUp, receiveAttack, boardState });
+
 useInterval(() => {
 	if (!canvasEl.value) return;
 	const actualCanvasWidth = canvasEl.value.getBoundingClientRect().width;
@@ -1270,16 +1398,19 @@ onMounted(async () => {
 	// その後で BGM を流すと、止める人がいない (onUnmounted はもう走った) のでタイトルや
 	// 他のページで鳴り続ける。
 	const mountedGeneration = generation;
-	try {
-		highScore.value = await misskeyApi('i/registry/get', {
-			scope: ['dropAndFusionGame'],
-			key: 'highScore:' + props.gameMode,
-		});
-	} catch (err) {
-		highScore.value = null;
+	// 対戦の得点はハイスコアに載せないので読まない。
+	if (props.versus == null) {
+		try {
+			highScore.value = await misskeyApi('i/registry/get', {
+				scope: ['dropAndFusionGame'],
+				key: 'highScore:' + props.gameMode,
+			});
+		} catch (err) {
+			highScore.value = null;
+		}
 	}
 
-	if (baseMode.value === 'yen') {
+	if (baseMode.value === 'yen' && props.versus == null) {
 		try {
 			yenTotal.value = await misskeyApi('i/registry/get', {
 				scope: ['dropAndFusionGame'],
@@ -1361,6 +1492,12 @@ definePage(() => ({
 </script>
 
 <style lang="scss" module>
+.timeUpLabel {
+	font-size: 2em;
+	font-weight: bold;
+	letter-spacing: 0.1em;
+}
+
 .transition_zoom_move,
 .transition_zoom_enterActive,
 .transition_zoom_leaveActive {

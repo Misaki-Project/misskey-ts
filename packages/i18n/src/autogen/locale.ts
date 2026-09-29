@@ -14607,6 +14607,148 @@ export interface Locale extends ILocale {
          * 中断してから時間が経ちすぎたため、中断したゲームは再開できません。最初から始めます。
          */
         "saveDiscardedExpired": string;
+        "_versus": {
+            /**
+             * バブルゲーム対戦
+             */
+            "title": string;
+            /**
+             * 対戦
+             */
+            "section": string;
+            /**
+             * このサーバーの人を招待して1対1で遊びます。続けて合体させる（2連鎖以上）とおじゃま石が相手に降ります。先に積み上がった方の負けで、5分経ったら得点の高い方の勝ちです。
+             */
+            "description": string;
+            /**
+             * 招待して対戦
+             */
+            "inviteButton": string;
+            /**
+             * 上で選んだモードと物理（{mode}）で対戦します。
+             */
+            "inviteHint": ParameterizedString<"mode">;
+            /**
+             * 届いている招待
+             */
+            "invitations": string;
+            /**
+             * 対戦に招待されています。
+             */
+            "invitedYou": string;
+            /**
+             * 受ける
+             */
+            "acceptInvitation": string;
+            /**
+             * 断る
+             */
+            "declineInvitation": string;
+            /**
+             * 相手の返事を待っています
+             */
+            "waitingForAnswer": string;
+            /**
+             * 2人とも準備ができたら始まります。
+             */
+            "readyDescription": string;
+            /**
+             * 準備OK
+             */
+            "ready": string;
+            /**
+             * 準備中
+             */
+            "notReady": string;
+            /**
+             * やめる
+             */
+            "leave": string;
+            /**
+             * この対局は進行中ですが、読み込み直したため再開できません。
+             */
+            "cannotResume": string;
+            /**
+             * 対局が見つかりません。期限が切れたか、取り消されました。
+             */
+            "notFound": string;
+            /**
+             * 招待は断られました。
+             */
+            "declined": string;
+            /**
+             * 相手が対局をやめました。
+             */
+            "canceled": string;
+            /**
+             * 結果を送れませんでした。もう一度送ってください。
+             */
+            "reportFailed": string;
+            /**
+             * 結果を送り直す
+             */
+            "resendReport": string;
+            /**
+             * 操作できませんでした
+             */
+            "operationFailed": string;
+            /**
+             * 結果は送りました。相手の結果を待っています
+             */
+            "waitingForOpponentResult": string;
+            /**
+             * 時間切れ
+             */
+            "timeUp": string;
+            /**
+             * 相手の盤面
+             */
+            "opponentBoard": string;
+            /**
+             * 終了
+             */
+            "opponentFinished": string;
+            /**
+             * 降ってくるおじゃま石
+             */
+            "pendingStones": string;
+            /**
+             * 勝ち
+             */
+            "win": string;
+            /**
+             * 負け
+             */
+            "lose": string;
+            /**
+             * 引き分け
+             */
+            "draw": string;
+            /**
+             * 先に積み上がった方の負けです。
+             */
+            "reasonGameOver": string;
+            /**
+             * 投了で決まりました。
+             */
+            "reasonSurrender": string;
+            /**
+             * 時間切れです。得点で決まりました。
+             */
+            "reasonTimeUp": string;
+            /**
+             * 切断で決まりました。
+             */
+            "reasonDisconnected": string;
+            /**
+             * 記録が不正だったため、報告した側の負けになりました。
+             */
+            "reasonInvalidReport": string;
+            /**
+             * {name}さんからバブルゲームの対戦に招待されました
+             */
+            "newInvitation": ParameterizedString<"name">;
+        };
     };
     "_mkgoNotification": {
         /**

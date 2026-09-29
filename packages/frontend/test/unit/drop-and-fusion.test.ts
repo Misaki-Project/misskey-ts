@@ -117,13 +117,16 @@ describe('bubble game overflow grace (#3193)', () => {
 
 	// リプレイと途中保存 (#3192) の早送りは、同じシードと操作の記録から同じ結末に
 	// なることが前提。判定を実時間で数えるとここが崩れる。
+	//
+	// ゲームを終わるまで回してからリプレイし直すので、既定の 5 秒では CI の
+	// ランナーで上限を超える (手元の 8 コアでも bouncy は 3.5 秒かかる。#3224)。
 	test.each(['normal', 'square', 'bouncy', 'space'] as const)('%s: 同じシードと記録から同じ結末になる', (mode) => {
 		const r = playUntilOver(mode, 'seed-b', 2);
 		const serialized = DropAndFusionGame.serializeLogs(r.logs);
 		const again = replay(mode, 'seed-b', serialized);
 		expect(again.overAt).toBe(r.frame);
 		expect(again.score).toBe(r.score);
-	});
+	}, 30000);
 });
 
 /**

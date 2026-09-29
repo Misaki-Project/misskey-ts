@@ -64,11 +64,11 @@ describe('role-level UI integration points', () => {
 		expect(source).toContain('v-if="suspended"');
 	});
 
-	test('profile hiding removes the native badge using the backend decision', () => {
+	test('profile hiding relies on the backend-filtered native role list', () => {
 		const source = read('packages/frontend/src/pages/user/home.vue');
-		expect(source).toContain('hiddenRoleIds');
-		expect(source).toContain('visibleRoles');
-		expect(read('packages/frontend/src/utility/role-level-api.ts')).toContain('hiddenRoleIds: string[]');
+		expect(source).toContain('v-for="role in user.roles"');
+		expect(source).not.toContain('hiddenRoleIds');
+		expect(read('packages/frontend/src/utility/role-level-api.ts')).not.toContain('hiddenRoleIds');
 	});
 
 	test('profile level tooltip has progress, MAX overflow, and MFM description', () => {

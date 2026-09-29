@@ -69,8 +69,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 								<div><MkSparkle><Mfm :plain="true" :text="user.followedMessage" :author="user" class="_selectable"/></MkSparkle></div>
 							</MkFukidashi>
 						</div>
-						<div v-if="visibleRoles.length > 0" class="roles">
-							<MkRoleLevelBadge v-for="role in visibleRoles" :key="role.id" :role="role" :level="roleLevels.get(role.id)"/>
+						<div v-if="user.roles.length > 0" class="roles">
+							<MkRoleLevelBadge v-for="role in user.roles" :key="role.id" :role="role" :level="roleLevels.get(role.id)"/>
 						</div>
 						<div v-if="iAmModerator" class="moderationNote">
 							<MkTextarea v-if="editModerationNote || (moderationNote != null && moderationNote !== '')" v-model="moderationNote" manualSave>
@@ -237,17 +237,13 @@ const props = withDefaults(defineProps<{
 });
 
 const roleLevels = ref(new Map<string, RoleLevelUserRole>());
-const hiddenRoleIds = ref(new Set<string>());
-const visibleRoles = computed(() => props.user.roles.filter(role => !hiddenRoleIds.value.has(role.id)));
 
 async function loadRoleLevels() {
 	try {
 		const result = await roleLevelApi<RoleLevelPublicProfileResponse>('plugin/role-level/users/show', { userId: props.user.id });
 		roleLevels.value = new Map(result.roles.map(role => [role.roleId, role]));
-		hiddenRoleIds.value = new Set(result.hiddenRoleIds ?? []);
 	} catch {
 		roleLevels.value = new Map();
-		hiddenRoleIds.value = new Set();
 	}
 }
 

@@ -59,7 +59,6 @@ export interface RoleLevelUserRole {
 export interface RoleLevelPublicProfileResponse {
 	userId: string;
 	roles: RoleLevelUserRole[];
-	hiddenRoleIds: string[];
 }
 
 export interface RoleLevelAdminUserResponse {

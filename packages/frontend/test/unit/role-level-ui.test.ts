@@ -38,6 +38,12 @@ describe('role-level default editor state', () => {
 });
 
 describe('role-level UI integration points', () => {
+	test('plugin adapter keeps credentials out of strict request bodies', () => {
+		const source = read('packages/frontend/src/utility/role-level-api.ts');
+		expect(source).toContain('Authorization: `Bearer ${$i.token}`');
+		expect(source).not.toContain('return misskeyApi(');
+	});
+
 	test.each([
 		['admin role category', 'packages/frontend/src/pages/admin/roles.vue', 'plugin/role-level/admin/roles/list'],
 		['role editor', 'packages/frontend/src/pages/admin/roles.edit.vue', 'plugin/role-level/admin/roles/update'],

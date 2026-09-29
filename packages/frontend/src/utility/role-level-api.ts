@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { misskeyApi } from '@/utility/misskey-api.js';
+import { apiUrl } from '@@/js/config.js';
+import { $i } from '@/i.js';
+import { pendingApiRequestsCount } from '@/utility/misskey-api.js';
 
 export type RoleLevelCurveType = 'const' | 'linear' | 'exponential';
 export type RoleLevelRangeType = 'base' | 'const' | 'multiplier';
@@ -72,9 +74,28 @@ type PluginEndpoint =
 	| 'plugin/role-level/users/profile-settings'
 	| 'plugin/role-level/users/profile-hide';
 
-export function roleLevelApi<T>(endpoint: PluginEndpoint, body: Record<string, unknown>): Promise<T> {
+export async function roleLevelApi<T>(endpoint: PluginEndpoint, body: Record<string, unknown>): Promise<T> {
 	// Plugin routes are intentionally outside misskey-js' upstream endpoint map.
-	return misskeyApi(endpoint as never, body as never) as unknown as Promise<T>;
+	// Use Bearer auth rather than misskeyApi(): that helper appends body.i, while
+	// plugin request bodies are strict and reject fields outside their contract.
+	pendingApiRequestsCount.value++;
+	try {
+		const response = await window.fetch(`${apiUrl}/${endpoint}`, {
+			method: 'POST',
+			body: JSON.stringify(body),
+			credentials: 'omit',
+			cache: 'no-cache',
+			headers: {
+				'Content-Type': 'application/json',
+				...($i ? { Authorization: `Bearer ${$i.token}` } : {}),
+			},
+		});
+		const result = response.status === 204 ? undefined : await response.json();
+		if (!response.ok) throw result?.error ?? result;
+		return result as T;
+	} finally {
+		pendingApiRequestsCount.value--;
+	}
 }
 
 export function defaultRoleLevelConfig(roleId = ''): RoleLevelConfig {

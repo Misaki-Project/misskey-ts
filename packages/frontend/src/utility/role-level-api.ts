@@ -56,11 +56,28 @@ export interface RoleLevelUserRole {
 	level: RoleLevelExperience;
 }
 
+export interface RoleLevelPublicProfileResponse {
+	userId: string;
+	roles: RoleLevelUserRole[];
+	hiddenRoleIds: string[];
+}
+
 export interface RoleLevelAdminUserResponse {
 	userId: string;
 	roles: RoleLevelUserRole[];
 	audit: Array<Record<string, unknown>>;
 	operations: Array<Record<string, unknown>>;
+}
+
+export interface RoleLevelAuditEntry {
+	id: string;
+	actorId: string;
+	operation: string;
+	roleId?: string;
+	userId?: string;
+	before?: unknown;
+	after?: unknown;
+	createdAt: string;
 }
 
 type PluginEndpoint =
@@ -70,6 +87,7 @@ type PluginEndpoint =
 	| 'plugin/role-level/admin/roles/delete'
 	| 'plugin/role-level/admin/users/show'
 	| 'plugin/role-level/admin/change-exp'
+	| 'plugin/role-level/admin/audit'
 	| 'plugin/role-level/users/show'
 	| 'plugin/role-level/users/profile-settings'
 	| 'plugin/role-level/users/profile-hide';

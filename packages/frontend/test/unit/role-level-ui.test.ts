@@ -63,4 +63,42 @@ describe('role-level UI integration points', () => {
 		expect(source).toContain('v-if="deleted"');
 		expect(source).toContain('v-if="suspended"');
 	});
+
+	test('profile hiding removes the native badge using the backend decision', () => {
+		const source = read('packages/frontend/src/pages/user/home.vue');
+		expect(source).toContain('hiddenRoleIds');
+		expect(source).toContain('visibleRoles');
+		expect(read('packages/frontend/src/utility/role-level-api.ts')).toContain('hiddenRoleIds: string[]');
+	});
+
+	test('profile level tooltip has progress, MAX overflow, and MFM description', () => {
+		const source = read('packages/frontend/src/components/MkRoleLevelTooltip.vue');
+		expect(source).toContain('MAX!!');
+		expect(source).toContain('currentLevelExp');
+		expect(source).toContain('nextLevelExp');
+		expect(source).toContain('<Mfm');
+		expect(source).toContain('role="progressbar"');
+	});
+
+	test('level policy ranges are attached to each native policy editor', () => {
+		const editor = read('packages/frontend/src/pages/admin/roles.policy-editor.vue');
+		expect(editor.match(/policyKey="/g)?.length).toBeGreaterThanOrEqual(50);
+		expect(editor).toContain('policyKey="canDeleteAccount"');
+		expect(read('packages/frontend/src/pages/admin/roles.policy-editor.folder.vue')).toContain('<XPolicyLevelRanges');
+		expect(read('packages/frontend/src/pages/admin/roles.level-editor.vue')).not.toContain('policyKey');
+	});
+
+	test('admin user exposes set, add, and multiply XP actions directly', () => {
+		const source = read('packages/frontend/src/pages/admin-user.vue');
+		expect(source).toContain("changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'set')");
+		expect(source).toContain("changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'add')");
+		expect(source).toContain("changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'multiplier')");
+	});
+
+	test('moderation log loads plugin configuration snapshots', () => {
+		const source = read('packages/frontend/src/pages/admin/modlog.ModLog.vue');
+		expect(source).toContain("'plugin/role-level/admin/audit'");
+		expect(source).toContain('roleLevelAudit.before');
+		expect(source).toContain('roleLevelAudit.after');
+	});
 });

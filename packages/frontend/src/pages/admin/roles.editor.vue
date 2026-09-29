@@ -92,6 +92,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				:isBaseRole="false"
 				:roleQuery="q"
 				:readonly="readonly"
+				:levelConfig="role.target === 'manualLevel' ? role.levelConfig : undefined"
 			/>
 		</div>
 	</FormSlot>

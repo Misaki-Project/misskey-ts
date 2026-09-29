@@ -8171,7 +8171,7 @@ export interface Locale extends ILocale {
          */
         "title": string;
         /**
-         * レベルロールの経験値曲線と、進行段階ごとに適用するポリシーを設定します。範囲は段階1から最大段階の次まで、重複や空白なく連続させてください。
+         * ここではレベルロールの経験値曲線を設定します。レベル別ポリシーは、下にある各ポリシーの編集欄で設定できます。
          */
         "editorDescription": string;
         /**
@@ -8219,6 +8219,10 @@ export interface Locale extends ILocale {
          */
         "policyRangesDescription": string;
         /**
+         * このポリシーに適用するレベル範囲を設定します。未指定のレベルでは通常のロール値を使用します。
+         */
+        "perPolicyRangesDescription": string;
+        /**
          * ポリシー範囲 {n}
          */
         "range": ParameterizedString<"n">;
@@ -8258,6 +8262,10 @@ export interface Locale extends ILocale {
          * ポリシー範囲を追加
          */
         "addRange": string;
+        /**
+         * このポリシーに範囲を追加
+         */
+        "addPolicyRange": string;
         /**
          * 固定
          */
@@ -8302,6 +8310,14 @@ export interface Locale extends ILocale {
          * 経験値を乗算
          */
         "multiplyExperience": string;
+        /**
+         * 表示する
+         */
+        "showOnProfile": string;
+        /**
+         * 非表示にする
+         */
+        "hideOnProfile": string;
         /**
          * レベル設定を削除
          */

@@ -2122,7 +2122,7 @@ _achievements:
 
 _roleLevel:
   title: "レベルロール"
-  editorDescription: "レベルロールの経験値曲線と、進行段階ごとに適用するポリシーを設定します。範囲は段階1から最大段階の次まで、重複や空白なく連続させてください。"
+  editorDescription: "ここではレベルロールの経験値曲線を設定します。レベル別ポリシーは、下にある各ポリシーの編集欄で設定できます。"
   baseLevel: "開始レベル"
   experienceCurve: "経験値曲線"
   segment: "区間 {n}"
@@ -2134,6 +2134,7 @@ _roleLevel:
   addSegment: "経験値区間を追加"
   policyRanges: "レベル別ポリシー"
   policyRangesDescription: "開始段階を含み、終了段階を含まない範囲です。baseは通常のロール・サーバーポリシーを維持します。"
+  perPolicyRangesDescription: "このポリシーに適用するレベル範囲を設定します。未指定のレベルでは通常のロール値を使用します。"
   range: "ポリシー範囲 {n}"
   rangeType: "適用方法"
   startStage: "開始段階"
@@ -2144,6 +2145,7 @@ _roleLevel:
   multiplierBase: "基準値"
   multiplierAdditional: "段階ごとの加算値"
   addRange: "ポリシー範囲を追加"
+  addPolicyRange: "このポリシーに範囲を追加"
   constant: "固定"
   linear: "線形"
   multiplier: "段階加算"
@@ -2155,6 +2157,8 @@ _roleLevel:
   setExperience: "経験値を設定"
   addExperience: "経験値を加算"
   multiplyExperience: "経験値を乗算"
+  showOnProfile: "表示する"
+  hideOnProfile: "非表示にする"
   removeConfiguration: "レベル設定を削除"
   legacyRoleNotice: "旧形式のレベルロールです。保存するとプラグイン形式へ移行します。"
   unavailable: "レベル情報を取得できませんでした。サーバーのrole-level設定を確認してください。"

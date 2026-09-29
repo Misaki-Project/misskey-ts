@@ -170,6 +170,12 @@ SPDX-License-Identifier: AGPL-3.0-only
 			<div :class="$style.diff">
 				<CodeDiff :context="5" :hideHeader="true" :oldString="roleLogSnapshot(log.info, 'before')" :newString="roleLogSnapshot(log.info, 'after')" language="javascript" maxHeight="300px"/>
 			</div>
+			<div v-if="roleLevelAudit" class="_gaps_s">
+				<b>{{ i18n.ts._roleLevel.title }}</b>
+				<div :class="$style.diff">
+					<CodeDiff :context="5" :hideHeader="true" :oldString="JSON5.stringify(roleLevelAudit.before ?? {}, null, '\t')" :newString="JSON5.stringify(roleLevelAudit.after ?? {}, null, '\t')" language="javascript" maxHeight="300px"/>
+				</div>
+			</div>
 		</template>
 		<template v-else-if="log.type === 'assignRole'">
 			<div>{{ i18n.ts.user }}: {{ log.info.userId }}</div>
@@ -239,16 +245,53 @@ SPDX-License-Identifier: AGPL-3.0-only
 </MkFolder>
 </template>
 
+<script lang="ts">
+import type { RoleLevelAuditEntry } from '@/utility/role-level-api.js';
+
+const roleLevelAuditRequests = new Map<string, Promise<RoleLevelAuditEntry[]>>();
+</script>
+
 <script lang="ts" setup>
+import { ref } from 'vue';
 import * as Misskey from 'misskey-js';
 import { CodeDiff } from 'v-code-diff';
 import JSON5 from 'json5';
 import { i18n } from '@/i18n.js';
 import MkFolder from '@/components/MkFolder.vue';
+import { roleLevelApi } from '@/utility/role-level-api.js';
 
 const props = defineProps<{
 	log: Misskey.entities.ModerationLog;
 }>();
+
+const roleLevelAudit = ref<RoleLevelAuditEntry | null>(null);
+
+function roleLogId(info: unknown): string | null {
+	const roleId = (info as { roleId?: unknown })?.roleId;
+	return typeof roleId === 'string' ? roleId : null;
+}
+
+async function loadRoleLevelAudit() {
+	if (props.log.type !== 'updateRole') return;
+	const roleId = roleLogId(props.log.info);
+	if (roleId == null) return;
+	let request = roleLevelAuditRequests.get(roleId);
+	if (request == null) {
+		request = roleLevelApi<{ entries: RoleLevelAuditEntry[] }>('plugin/role-level/admin/audit', { roleId, limit: 100 })
+			.then(result => result.entries)
+			.catch(() => []);
+		roleLevelAuditRequests.set(roleId, request);
+	}
+	const logTime = new Date(props.log.createdAt).getTime();
+	const entries = await request;
+	roleLevelAudit.value = entries
+		.filter(entry => entry.actorId === props.log.userId && entry.operation.startsWith('config-'))
+		.map(entry => ({ entry, distance: Math.abs(new Date(entry.createdAt).getTime() - logTime) }))
+		.filter(candidate => candidate.distance <= 60_000)
+		.sort((a, b) => a.distance - b.distance)[0]?.entry ?? null;
+}
+
+void loadRoleLevelAudit();
 
 /**
  * Renders the target acct for mk-go's own log types (#2962).

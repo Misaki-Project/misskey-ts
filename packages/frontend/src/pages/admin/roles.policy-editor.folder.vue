@@ -26,6 +26,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 			<MkRange v-if="!isBaseRole && policyMeta != null" v-model="priorityModel" :min="0" :max="2" :step="1" easing :textConverter="priroityRangeTextConverter" :disabled="readonly">
 				<template #label>{{ i18n.ts._role.priority }}</template>
 			</MkRange>
+			<XPolicyLevelRanges v-if="levelConfig && policyKey" :config="levelConfig" :policyKey="policyKey" :readonly="readonly"/>
 		</div>
 	</MkFolder>
 </template>
@@ -35,13 +36,17 @@ import { computed } from 'vue';
 import MkFolder from '@/components/MkFolder.vue';
 import MkSwitch from '@/components/MkSwitch.vue';
 import MkRange from '@/components/MkRange.vue';
+import XPolicyLevelRanges from './roles.policy-level-ranges.vue';
 import { i18n } from '@/i18n.js';
+import type { RoleLevelConfig } from '@/utility/role-level-api.js';
 import type { PolicyMeta } from './roles.policy-editor.vue';
 
 const props = defineProps<{
 	isBaseRole: boolean;
 	policyMeta?: PolicyMeta | null;
 	readonly?: boolean;
+	levelConfig?: RoleLevelConfig;
+	policyKey?: string;
 }>();
 
 const emit = defineEmits<{

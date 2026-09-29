@@ -59,11 +59,12 @@ SPDX-License-Identifier: AGPL-3.0-only
 							<MkRolePreview :class="$style.rolePreview" :role="role" :forModeration="false"/>
 							<MkButton
 								v-if="levelProfileRoles.has(role.id)"
+								v-tooltip="levelProfileRoles.get(role.id)?.hidden ? i18n.ts._roleLevel.showOnProfile : i18n.ts._roleLevel.hideOnProfile"
 								small
+								:aria-label="levelProfileRoles.get(role.id)?.hidden ? i18n.ts._roleLevel.showOnProfile : i18n.ts._roleLevel.hideOnProfile"
 								@click="toggleLevelRoleVisibility(role.id)"
 							>
 								<i :class="levelProfileRoles.get(role.id)?.hidden ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-								{{ levelProfileRoles.get(role.id)?.hidden ? i18n.ts.show : i18n.ts.hide }}
 							</MkButton>
 						</div>
 					</div>

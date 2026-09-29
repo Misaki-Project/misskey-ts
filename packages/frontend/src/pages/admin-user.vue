@@ -156,9 +156,12 @@ SPDX-License-Identifier: AGPL-3.0-only
 			<div v-for="role in info.roles" :key="role.id">
 				<div :class="$style.roleItemMain">
 					<MkRolePreview :class="$style.role" :role="role" :forModeration="true"/>
-					<button v-if="roleLevelByRoleId.get(role.id)" v-tooltip="levelTooltip(role.id)" class="_button" :class="$style.roleLevel" @click="editRoleExperience(role.id, $event)">
-						<b>Lv.{{ roleLevelByRoleId.get(role.id)!.level.currentLevel }}</b>
-					</button>
+					<div v-if="roleLevelByRoleId.get(role.id)" :class="$style.roleLevelControls">
+						<span v-tooltip="levelTooltip(role.id)" :class="$style.roleLevel"><b>Lv.{{ roleLevelByRoleId.get(role.id)!.level.currentLevel }}</b></span>
+						<button v-tooltip="i18n.ts._roleLevel.setExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.setExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'set')"><i class="ti ti-equal"></i></button>
+						<button v-tooltip="i18n.ts._roleLevel.addExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.addExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'add')"><i class="ti ti-plus"></i></button>
+						<button v-tooltip="i18n.ts._roleLevel.multiplyExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.multiplyExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'multiplier')"><i class="ti ti-x"></i></button>
+					</div>
 					<button class="_button" @click="toggleRoleItem(role)"><i class="ti ti-chevron-down"></i></button>
 					<button v-if="role.target === 'manual' || (role.target as string) === 'manualLevel'" class="_button" :class="$style.roleUnassign" @click="unassignRole(role, $event)"><i class="ti ti-x"></i></button>
 					<button v-else class="_button" :class="$style.roleUnassign" disabled><i class="ti ti-ban"></i></button>
@@ -349,24 +352,6 @@ function levelTooltip(roleId: string) {
 	if (!item) return '';
 	const next = item.level.nextLevelExp == null ? i18n.ts._roleLevel.maxLevel : `${item.level.currentLevelExp} / ${item.level.nextLevelExp}`;
 	return `Lv.${item.level.currentLevel} · ${next} · XP ${item.experience}`;
-}
-
-async function editRoleExperience(roleId: string, ev: PointerEvent) {
-	const current = roleLevelByRoleId.value.get(roleId);
-	if (!current) return;
-	os.popupMenu([{
-		text: i18n.ts._roleLevel.setExperience,
-		icon: 'ti ti-equal',
-		action: () => changeRoleExperience(current, 'set'),
-	}, {
-		text: i18n.ts._roleLevel.addExperience,
-		icon: 'ti ti-plus',
-		action: () => changeRoleExperience(current, 'add'),
-	}, {
-		text: i18n.ts._roleLevel.multiplyExperience,
-		icon: 'ti ti-x',
-		action: () => changeRoleExperience(current, 'multiplier'),
-	}], ev.currentTarget ?? ev.target);
 }
 
 async function changeRoleExperience(current: RoleLevelUserRole, mode: 'set' | 'add' | 'multiplier') {
@@ -831,11 +816,25 @@ definePage(() => ({
 }
 
 .roleLevel {
-	min-width: 64px;
-	height: 32px;
-	padding: 0 8px;
-	align-self: center;
 	color: var(--MI_THEME-accent);
+}
+
+.roleLevelControls {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 4px;
+}
+
+.roleLevelAction {
+	width: 28px;
+	height: 28px;
+	border-radius: 50%;
+	color: var(--MI_THEME-accent);
+
+	&:hover {
+		background: var(--MI_THEME-buttonHoverBg);
+	}
 }
 
 .announcementItem {

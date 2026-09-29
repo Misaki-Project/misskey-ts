@@ -261,7 +261,9 @@ function roleTooltip(role: Misskey.entities.UserDetailed['roles'][number]) {
 	return `${role.description}\nLv.${level.level.currentLevel} · ${progress}\nTotal XP: ${level.experience}`;
 }
 
-await loadRoleLevels();
+watch(() => props.user.id, () => {
+	void loadRoleLevels();
+}, { immediate: true });
 
 const emit = defineEmits<{
 	(ev: 'showMoreFiles'): void;

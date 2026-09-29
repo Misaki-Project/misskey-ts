@@ -9277,6 +9277,108 @@ export interface Locale extends ILocale {
          */
         "inProgress": string;
     };
+    "_databaseHealth": {
+        /**
+         * テーブル
+         */
+        "tabTables": string;
+        /**
+         * 健全性
+         */
+        "tabHealth": string;
+        /**
+         * PostgreSQLの統計から、使われていないインデックスと、テーブルごとの不要な行（dead tuple）やVACUUMの状況を表示します。判断の材料を出すだけで、何も削除しません。サーバーは統計を1分間保持するので、開き直しても1分以内は同じ内容です。
+         */
+        "description": string;
+        /**
+         * 統計を取得できませんでした。
+         */
+        "unavailable": string;
+        /**
+         * 取得した日時
+         */
+        "generatedAt": string;
+        /**
+         * 統計をリセットした記録
+         */
+        "statsReset": string;
+        /**
+         * 記録はありません
+         */
+        "statsNeverReset": string;
+        /**
+         * インデックスの利用回数は、統計が消えてから数えています。統計はリセットのほか、異常終了やフェイルオーバーでも消えますが、そのときは上の記録が変わりません。統計が消えた直後は、使われているインデックスも「使われていない」と表示されます（通常の再起動では消えません）。
+         */
+        "statsResetCaption": string;
+        /**
+         * 読み取りレプリカが有効です。統計はプライマリから読むため、レプリカで使われているインデックスも「使われていない」と表示されます。
+         */
+        "replicasNote": string;
+        /**
+         * 使われていないインデックス
+         */
+        "unusedIndexes": string;
+        /**
+         * 書き込みのたびに更新する手間だけがかかっています。ただし、外部キーで参照されている行を削除するとき（アカウントの削除など）にだけ使われるインデックスもあり、消すとその処理が遅くなります。消すかどうかは、下の注意も確かめてから判断してください。
+         */
+        "unusedIndexesCaption": string;
+        /**
+         * 使われていないインデックスはありません。
+         */
+        "noUnusedIndexes": string;
+        /**
+         * 制約を支えています（削除できません）
+         */
+        "constraint": string;
+        /**
+         * テーブル
+         */
+        "tables": string;
+        /**
+         * 不要な行の割合が高いテーブルや、自動VACUUMが走るはずの量を超えても長くVACUUMされていないテーブルは、放置すると膨らみ続けて性能が落ちます。サイズは最後のVACUUM・ANALYZEの時点の見積もりです（TOASTの分はVACUUMの時点）。
+         */
+        "tablesCaption": string;
+        /**
+         * サイズ不明（まだVACUUM・ANALYZEされていません）
+         */
+        "sizeUnknown": string;
+        /**
+         * VACUUM中
+         */
+        "vacuuming": string;
+        /**
+         * 不要な行 {n}件（{ratio}%）
+         */
+        "deadRows": ParameterizedString<"n" | "ratio">;
+        /**
+         * 有効な行 {n}件
+         */
+        "liveRows": ParameterizedString<"n">;
+        /**
+         * 最後のVACUUM
+         */
+        "lastVacuum": string;
+        /**
+         * 最後のANALYZE
+         */
+        "lastAnalyze": string;
+        /**
+         * まだありません
+         */
+        "never": string;
+        /**
+         * 要確認
+         */
+        "needsAttention": string;
+        /**
+         * 不要な行の割合が高い
+         */
+        "problemBloat": string;
+        /**
+         * 自動VACUUMが走るはずの量を超えても、長くVACUUMされていない
+         */
+        "problemVacuum": string;
+    };
     "_federationRules": {
         /**
          * ルール

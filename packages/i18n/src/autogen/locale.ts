@@ -13981,6 +13981,14 @@ export interface Locale extends ILocale {
          * このロールのメンバーが自分のアカウントの削除を申請できるようにします。管理者が他のアカウントを削除する操作には影響しません。
          */
         "canDeleteAccount_caption": string;
+        /**
+         * 自分のアカウントを完全に削除できる
+         */
+        "canPurgeAccount": string;
+        /**
+         * このロールのメンバーが自分のアカウントを削除したとき、user レコードとプロフィールを完全に消去するかどうかを決めます。消去せずに残す設定ではアカウントだけが無効になり、削除後も利用者を特定できる状態が残ります。管理者が他のアカウントを削除する操作には影響しません。
+         */
+        "canPurgeAccount_caption": string;
     };
     "_mkgoAvatarDecoration": {
         /**

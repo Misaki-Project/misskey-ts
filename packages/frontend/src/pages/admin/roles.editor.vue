@@ -143,6 +143,7 @@ const mkGoRolePolicyKeys: string[] = [
 	'canUseEmojiAsAvatarDecoration',
 	'canSearchIpHistory',
 	'canDeleteAccount',
+	'canPurgeAccount',
 	'canUseChunkedUpload',
 	'chunkedUploadMaxConcurrentSessions',
 	'chunkedUploadMaxPendingMb',

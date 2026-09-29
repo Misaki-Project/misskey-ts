@@ -267,6 +267,17 @@ SPDX-License-Identifier: AGPL-3.0-only
 			</template>
 		</XFolder>
 
+		<XFolder v-if="matchQuery([i18n.ts._mkgoRolePolicy.canPurgeAccount, 'canPurgeAccount'])" v-model:policyMeta="canPurgeAccountMeta" :isBaseRole="isBaseRole" :readonly="readonly">
+			<template #label>{{ i18n.ts._mkgoRolePolicy.canPurgeAccount }}</template>
+			<template #valueText>{{ canPurgeAccount ? i18n.ts.yes : i18n.ts.no }}</template>
+			<template #default="{ disabled }">
+				<MkSwitch v-model="canPurgeAccount" :disabled="disabled">
+					<template #label>{{ i18n.ts.enable }}</template>
+					<template #caption>{{ i18n.ts._mkgoRolePolicy.canPurgeAccount_caption }}</template>
+				</MkSwitch>
+			</template>
+		</XFolder>
+
 		<XFolder v-if="matchQuery([i18n.ts._mkgoRolePolicy.canUseChunkedUpload, 'canUseChunkedUpload'])" v-model:policyMeta="canUseChunkedUploadMeta" :isBaseRole="isBaseRole" :readonly="readonly">
 			<template #label>{{ i18n.ts._mkgoRolePolicy.canUseChunkedUpload }}</template>
 			<template #valueText>{{ canUseChunkedUpload ? i18n.ts.yes : i18n.ts.no }}</template>
@@ -652,6 +663,7 @@ const mkGoPolicyMetaKeys: string[] = [
 	'canUseEmojiAsAvatarDecoration',
 	'canSearchIpHistory',
 	'canDeleteAccount',
+	'canPurgeAccount',
 	'canUseChunkedUpload',
 	'chunkedUploadMaxConcurrentSessions',
 	'chunkedUploadMaxPendingMb',
@@ -735,6 +747,8 @@ const canSearchIpHistoryMeta = mkGoPolicyMeta('canSearchIpHistory');
 // internal/effectivepolicy/validation.go の default と揃えること。
 const canDeleteAccount = mkGoPolicyValue('canDeleteAccount', true);
 const canDeleteAccountMeta = mkGoPolicyMeta('canDeleteAccount');
+const canPurgeAccount = mkGoPolicyValue('canPurgeAccount', true);
+const canPurgeAccountMeta = mkGoPolicyMeta('canPurgeAccount');
 const canUseChunkedUpload = mkGoPolicyValue('canUseChunkedUpload', true);
 const canUseChunkedUploadMeta = mkGoPolicyMeta('canUseChunkedUpload');
 const chunkedUploadMaxConcurrentSessions = mkGoPolicyValue('chunkedUploadMaxConcurrentSessions', 4);

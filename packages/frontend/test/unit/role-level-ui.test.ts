@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defaultRoleLevelConfig } from '@/utility/role-level-api.js';
-import { curveCost, curveTotal, moveRangeEnd, moveRangeStart, previewOffsets } from '@/pages/admin/role-level-editor-utils.js';
+import { curveCost, curveTotal, moveRangeEnd, moveRangeStart, normalizedPolicyRangeCount, previewOffsets } from '@/pages/admin/role-level-editor-utils.js';
 import type { EditablePolicyRange } from '@/pages/admin/role-level-editor-utils.js';
 
 function findRepoRoot(): string {
@@ -43,6 +43,19 @@ describe('role-level editor calculations', () => {
 	test('samples all short ranges and both ends of long ranges', () => {
 		expect(previewOffsets(6)).toEqual([0, 1, 2, 3, 4, 5]);
 		expect(previewOffsets(9)).toEqual([0, 1, 2, 6, 7, 8]);
+	});
+
+	test('counts materialized no-change gaps before the policy folder opens', () => {
+		expect(normalizedPolicyRangeCount([], 10)).toBe(0);
+		expect(normalizedPolicyRangeCount([
+			{ type: 'base', key: 'pinLimit', start: 1, end: 11 },
+		], 10)).toBe(1);
+		expect(normalizedPolicyRangeCount([
+			{ type: 'const', key: 'pinLimit', start: 2, end: 5, value: 10 },
+		], 10)).toBe(3);
+		expect(normalizedPolicyRangeCount([
+			{ type: 'const', key: 'pinLimit', start: 1, end: 5, value: 10 },
+		], 10)).toBe(2);
 	});
 
 	test('keeps adjacent ranges contiguous when an end moves', () => {
@@ -130,6 +143,7 @@ describe('role-level UI integration points', () => {
 		const ranges = read('packages/frontend/src/pages/admin/roles.policy-level-ranges.vue');
 		expect(folder.indexOf('<XPolicyLevelRanges')).toBeLessThan(folder.indexOf('<MkRange v-if="!isBaseRole'));
 		expect(folder).toContain('policyRangeCount');
+		expect(folder).toContain('normalizedPolicyRangeCount');
 		expect(ranges).toContain("range.end - 1");
 		expect(ranges).toContain('stageToLevel(range.start)');
 		expect(ranges).toContain('levelToStage(Number(value))');

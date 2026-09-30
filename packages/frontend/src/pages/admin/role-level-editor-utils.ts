@@ -17,6 +17,29 @@ export function previewOffsets(length: number): number[] {
 	return [0, 1, 2, safeLength - 3, safeLength - 2, safeLength - 1];
 }
 
+export function normalizedPolicyRangeCount(ranges: RoleLevelPolicyRange[], maxStage: number): number {
+	if (ranges.length === 0) return 0;
+	const finalEnd = Math.max(2, Math.trunc(maxStage) + 1);
+	let cursor = 1;
+	let count = 0;
+	for (const range of [...ranges].sort((a, b) => a.start - b.start)) {
+		const start = Math.max(1, Math.min(finalEnd - 1, Math.trunc(Number(range.start))));
+		const end = Math.max(start + 1, Math.min(finalEnd, Math.trunc(Number(range.end))));
+		// Opening the nested editor materializes uncovered levels as explicit
+		// `base` (変更なし) ranges. Count those before mount as well so the
+		// parent folder's suffix does not change merely by opening it.
+		if (start > cursor) count++;
+		const actualStart = Math.max(cursor, start);
+		if (end > actualStart) {
+			count++;
+			cursor = end;
+		}
+		if (cursor >= finalEnd) break;
+	}
+	if (cursor < finalEnd) count++;
+	return count;
+}
+
 export function moveRangeEnd(ranges: EditablePolicyRange[], index: number, inclusiveEnd: number): void {
 	if (index < 0 || index >= ranges.length - 1) return;
 	const current = ranges[index];

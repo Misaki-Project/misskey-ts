@@ -44,6 +44,7 @@ import MkRange from '@/components/MkRange.vue';
 import XPolicyLevelRanges from './roles.policy-level-ranges.vue';
 import { i18n } from '@/i18n.js';
 import type { RoleLevelConfig } from '@/utility/role-level-api.js';
+import { normalizedPolicyRangeCount } from './role-level-editor-utils.js';
 import type { PolicyMeta } from './roles.policy-editor.vue';
 
 const props = defineProps<{
@@ -78,7 +79,11 @@ const priorityModel = computed<number>({
 	},
 });
 
-const levelPolicyCount = computed(() => props.levelConfig?.policyRanges.filter(range => range.key === props.policyKey).length ?? 0);
+const maxStage = computed(() => 1 + (props.levelConfig?.experienceCurve.reduce((sum, curve) => sum + Math.max(0, Math.trunc(Number(curve.levelUps))), 0) ?? 0));
+const levelPolicyCount = computed(() => normalizedPolicyRangeCount(
+	props.levelConfig?.policyRanges.filter(range => range.key === props.policyKey) ?? [],
+	maxStage.value,
+));
 
 function getPriorityIcon(priority: number): string {
 	if (priority === 2) return 'ti ti-arrows-up';

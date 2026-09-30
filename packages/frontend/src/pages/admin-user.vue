@@ -160,6 +160,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 						<span v-tooltip="levelTooltip(role.id)" :class="$style.roleLevel"><b>Lv.{{ roleLevelByRoleId.get(role.id)!.level.currentLevel }}</b></span>
 						<button v-tooltip="i18n.ts._roleLevel.setExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.setExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'set')"><i class="ti ti-equal"></i></button>
 						<button v-tooltip="i18n.ts._roleLevel.addExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.addExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'add')"><i class="ti ti-plus"></i></button>
+						<button v-tooltip="i18n.ts._roleLevel.subtractExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.subtractExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'subtract')"><i class="ti ti-minus"></i></button>
 						<button v-tooltip="i18n.ts._roleLevel.multiplyExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.multiplyExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'multiplier')"><i class="ti ti-x"></i></button>
 					</div>
 					<button class="_button" @click="toggleRoleItem(role)"><i class="ti ti-chevron-down"></i></button>
@@ -354,7 +355,7 @@ function levelTooltip(roleId: string) {
 	return `Lv.${item.level.currentLevel} · ${next} · XP ${item.experience}`;
 }
 
-async function changeRoleExperience(current: RoleLevelUserRole, mode: 'set' | 'add' | 'multiplier') {
+async function changeRoleExperience(current: RoleLevelUserRole, mode: 'set' | 'add' | 'subtract' | 'multiplier') {
 	const input = await os.inputNumber({
 		title: i18n.ts._roleLevel.editExperience,
 		default: mode === 'set' ? current.experience : mode === 'multiplier' ? 1 : 0,
@@ -364,8 +365,8 @@ async function changeRoleExperience(current: RoleLevelUserRole, mode: 'set' | 'a
 		idempotencyKey: crypto.randomUUID(),
 		userId: props.userId,
 		roleId: current.roleId,
-		mode,
-		operand: input.result,
+		mode: mode === 'subtract' ? 'add' : mode,
+		operand: mode === 'subtract' ? -Math.abs(input.result) : input.result,
 	});
 	await refreshRoleLevels();
 }

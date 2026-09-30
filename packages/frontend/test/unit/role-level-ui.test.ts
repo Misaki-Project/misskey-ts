@@ -88,10 +88,12 @@ describe('role-level UI integration points', () => {
 		expect(read('packages/frontend/src/pages/admin/roles.level-editor.vue')).not.toContain('policyKey');
 	});
 
-	test('admin user exposes set, add, and multiply XP actions directly', () => {
+	test('admin user exposes set, add, subtract, and multiply XP actions directly', () => {
 		const source = read('packages/frontend/src/pages/admin-user.vue');
 		expect(source).toContain("changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'set')");
 		expect(source).toContain("changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'add')");
+		expect(source).toContain("changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'subtract')");
+		expect(source).toContain("mode === 'subtract' ? -Math.abs(input.result) : input.result");
 		expect(source).toContain("changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'multiplier')");
 	});
 

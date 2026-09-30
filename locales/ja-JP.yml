@@ -2156,6 +2156,7 @@ _roleLevel:
   editExperience: "経験値を編集"
   setExperience: "経験値を設定"
   addExperience: "経験値を加算"
+  subtractExperience: "経験値を減算"
   multiplyExperience: "経験値を乗算"
   showOnProfile: "表示する"
   hideOnProfile: "非表示にする"

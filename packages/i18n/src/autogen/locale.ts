@@ -8307,6 +8307,10 @@ export interface Locale extends ILocale {
          */
         "addExperience": string;
         /**
+         * 経験値を加減算
+         */
+        "adjustExperience": string;
+        /**
          * 経験値を減算
          */
         "subtractExperience": string;

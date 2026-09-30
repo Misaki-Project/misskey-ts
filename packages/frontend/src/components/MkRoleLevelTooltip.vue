@@ -18,7 +18,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<div :class="$style.gaugeValue" :style="{ width: `${progress}%` }"></div>
 			</div>
 		</template>
-		<Mfm v-if="role.description" :text="role.description"/>
+		<Mfm v-if="showDescription && role?.description" :text="role.description"/>
 	</div>
 </MkTooltip>
 </template>
@@ -28,12 +28,15 @@ import { computed } from 'vue';
 import MkTooltip from '@/components/MkTooltip.vue';
 import type { RoleLevelUserRole } from '@/utility/role-level-api.js';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
 	showing: boolean;
 	anchorElement: HTMLElement;
-	role: { description: string };
+	role?: { description: string };
 	level?: RoleLevelUserRole;
-}>();
+	showDescription?: boolean;
+}>(), {
+	showDescription: true,
+});
 
 const emit = defineEmits<{
 	(ev: 'closed'): void;

@@ -157,11 +157,10 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<div :class="$style.roleItemMain">
 					<MkRolePreview :class="$style.role" :role="role" :forModeration="true"/>
 					<div v-if="roleLevelByRoleId.get(role.id)" :class="$style.roleLevelControls">
-						<span v-tooltip="levelTooltip(role.id)" :class="$style.roleLevel"><b>Lv.{{ roleLevelByRoleId.get(role.id)!.level.currentLevel }}</b></span>
+						<XRoleLevelValue :level="roleLevelByRoleId.get(role.id)!"/>
 						<button v-tooltip="i18n.ts._roleLevel.setExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.setExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'set')"><i class="ti ti-equal"></i></button>
-						<button v-tooltip="i18n.ts._roleLevel.addExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.addExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'add')"><i class="ti ti-plus"></i></button>
-						<button v-tooltip="i18n.ts._roleLevel.subtractExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.subtractExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'subtract')"><i class="ti ti-minus"></i></button>
-						<button v-tooltip="i18n.ts._roleLevel.multiplyExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.multiplyExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'multiplier')"><i class="ti ti-x"></i></button>
+						<button v-tooltip="i18n.ts._roleLevel.adjustExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.adjustExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'add')">±</button>
+						<button v-tooltip="i18n.ts._roleLevel.multiplyExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.multiplyExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'multiplier')">＊</button>
 					</div>
 					<button class="_button" @click="toggleRoleItem(role)"><i class="ti ti-chevron-down"></i></button>
 					<button v-if="role.target === 'manual' || (role.target as string) === 'manualLevel'" class="_button" :class="$style.roleUnassign" @click="unassignRole(role, $event)"><i class="ti ti-x"></i></button>
@@ -276,6 +275,7 @@ import { ensureSignin, iAmAdmin, iAmModerator } from '@/i.js';
 import XEmojiApplications from '@/pages/admin-user.emoji-applications.vue';
 import XRelatedAccounts from '@/pages/admin-user.related-accounts.vue';
 import MkRolePreview from '@/components/MkRolePreview.vue';
+import XRoleLevelValue from '@/pages/admin-user.role-level-value.vue';
 import MkPagination from '@/components/MkPagination.vue';
 import { Paginator } from '@/utility/paginator.js';
 import { roleLevelApi } from '@/utility/role-level-api.js';
@@ -348,14 +348,7 @@ async function refreshRoleLevels() {
 
 await refreshRoleLevels();
 
-function levelTooltip(roleId: string) {
-	const item = roleLevelByRoleId.value.get(roleId);
-	if (!item) return '';
-	const next = item.level.nextLevelExp == null ? i18n.ts._roleLevel.maxLevel : `${item.level.currentLevelExp} / ${item.level.nextLevelExp}`;
-	return `Lv.${item.level.currentLevel} · ${next} · XP ${item.experience}`;
-}
-
-async function changeRoleExperience(current: RoleLevelUserRole, mode: 'set' | 'add' | 'subtract' | 'multiplier') {
+async function changeRoleExperience(current: RoleLevelUserRole, mode: 'set' | 'add' | 'multiplier') {
 	const input = await os.inputNumber({
 		title: i18n.ts._roleLevel.editExperience,
 		default: mode === 'set' ? current.experience : mode === 'multiplier' ? 1 : 0,
@@ -365,8 +358,8 @@ async function changeRoleExperience(current: RoleLevelUserRole, mode: 'set' | 'a
 		idempotencyKey: crypto.randomUUID(),
 		userId: props.userId,
 		roleId: current.roleId,
-		mode: mode === 'subtract' ? 'add' : mode,
-		operand: mode === 'subtract' ? -Math.abs(input.result) : input.result,
+		mode,
+		operand: input.result,
 	});
 	await refreshRoleLevels();
 }
@@ -816,10 +809,6 @@ definePage(() => ({
 	align-self: center;
 }
 
-.roleLevel {
-	color: var(--MI_THEME-accent);
-}
-
 .roleLevelControls {
 	display: flex;
 	align-items: center;
@@ -830,8 +819,10 @@ definePage(() => ({
 .roleLevelAction {
 	width: 28px;
 	height: 28px;
-	border-radius: 50%;
+	border: solid 1px var(--MI_THEME-divider);
+	border-radius: 6px;
 	color: var(--MI_THEME-accent);
+	font-weight: 700;
 
 	&:hover {
 		background: var(--MI_THEME-buttonHoverBg);

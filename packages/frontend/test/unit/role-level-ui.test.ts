@@ -88,13 +88,25 @@ describe('role-level UI integration points', () => {
 		expect(read('packages/frontend/src/pages/admin/roles.level-editor.vue')).not.toContain('policyKey');
 	});
 
-	test('admin user exposes set, add, subtract, and multiply XP actions directly', () => {
+	test('admin user exposes set, signed adjustment, and multiply XP actions directly', () => {
 		const source = read('packages/frontend/src/pages/admin-user.vue');
 		expect(source).toContain("changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'set')");
 		expect(source).toContain("changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'add')");
-		expect(source).toContain("changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'subtract')");
-		expect(source).toContain("mode === 'subtract' ? -Math.abs(input.result) : input.result");
+		expect(source).not.toContain("'subtract'");
+		expect(source).toContain('>±</button>');
+		expect(source).toContain('>＊</button>');
 		expect(source).toContain("changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'multiplier')");
+	});
+
+	test('admin level hover reuses the profile tooltip without its description', () => {
+		const value = read('packages/frontend/src/pages/admin-user.role-level-value.vue');
+		expect(value).toContain("import('@/components/MkRoleLevelTooltip.vue')");
+		expect(value).toContain('showDescription: false');
+		expect(value).toContain('tabindex="0"');
+		expect(value).toContain('@focus="showKeyboardTooltip"');
+		expect(value).toContain('@blur="hideKeyboardTooltip"');
+		expect(read('packages/frontend/src/pages/admin-user.vue')).toContain('<XRoleLevelValue');
+		expect(read('packages/frontend/src/components/MkRoleLevelTooltip.vue')).toContain('showDescription: true');
 	});
 
 	test('moderation log loads plugin configuration snapshots', () => {

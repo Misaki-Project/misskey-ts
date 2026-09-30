@@ -101,7 +101,7 @@ function cleanLevelConfig(config: RoleLevelConfig, roleId: string) {
 			type: range.type,
 			start: Number(range.start),
 			end: Number(range.end),
-			...(range.type !== 'base' ? { key: range.key } : {}),
+			...(range.key ? { key: range.key } : {}),
 			...(range.type === 'const' ? { value: range.value } : {}),
 			...(range.type === 'multiplier' ? { base: Number(range.base ?? 0), additional: Number(range.additional ?? 0) } : {}),
 		})),

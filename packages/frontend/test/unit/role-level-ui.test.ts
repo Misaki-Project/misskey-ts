@@ -8,6 +8,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defaultRoleLevelConfig } from '@/utility/role-level-api.js';
+import { curveCost, curveTotal, moveRangeEnd, moveRangeStart, previewOffsets } from '@/pages/admin/role-level-editor-utils.js';
+import type { EditablePolicyRange } from '@/pages/admin/role-level-editor-utils.js';
 
 function findRepoRoot(): string {
 	for (const start of [process.cwd(), dirname(fileURLToPath(import.meta.url))]) {
@@ -34,6 +36,41 @@ describe('role-level default editor state', () => {
 			policyRanges: [{ type: 'base', start: 1, end: 101 }],
 			revision: 0,
 		});
+	});
+});
+
+describe('role-level editor calculations', () => {
+	test('samples all short ranges and both ends of long ranges', () => {
+		expect(previewOffsets(6)).toEqual([0, 1, 2, 3, 4, 5]);
+		expect(previewOffsets(9)).toEqual([0, 1, 2, 6, 7, 8]);
+	});
+
+	test('keeps adjacent ranges contiguous when an end moves', () => {
+		const ranges = [
+			{ type: 'const', key: 'pinLimit', start: 1, end: 4, base: 0, additional: 0 },
+			{ type: 'base', key: 'pinLimit', start: 4, end: 7, base: 0, additional: 0 },
+			{ type: 'const', key: 'pinLimit', start: 7, end: 11, base: 0, additional: 0 },
+		] satisfies EditablePolicyRange[];
+		moveRangeEnd(ranges, 0, 5);
+		expect(ranges.map(range => [range.start, range.end])).toEqual([[1, 6], [6, 9], [9, 11]]);
+		moveRangeStart(ranges, 1, 3);
+		expect(ranges.map(range => [range.start, range.end])).toEqual([[1, 3], [3, 9], [9, 11]]);
+	});
+
+	test('cascades an end reduction through ranges that reached their minimum width', () => {
+		const ranges = [
+			{ type: 'const', key: 'pinLimit', start: 1, end: 4, base: 0, additional: 0 },
+			{ type: 'base', key: 'pinLimit', start: 4, end: 7, base: 0, additional: 0 },
+			{ type: 'const', key: 'pinLimit', start: 7, end: 11, base: 0, additional: 0 },
+		] satisfies EditablePolicyRange[];
+		moveRangeEnd(ranges, 1, 2);
+		expect(ranges.map(range => [range.start, range.end])).toEqual([[1, 2], [2, 3], [3, 11]]);
+	});
+
+	test('matches constant, linear, and exponential curve formulas', () => {
+		expect(curveCost({ type: 'const', levelUps: 3, base: 10, additional: 0, exponential: 1 }, 2)).toBe(10);
+		expect(curveTotal({ type: 'linear', levelUps: 3, base: 10, additional: 2, exponential: 1 })).toBe(36);
+		expect(curveTotal({ type: 'exponential', levelUps: 3, base: 10, additional: 2, exponential: 2 })).toBe(44);
 	});
 });
 
@@ -86,6 +123,36 @@ describe('role-level UI integration points', () => {
 		expect(editor).toContain('policyKey="canDeleteAccount"');
 		expect(read('packages/frontend/src/pages/admin/roles.policy-editor.folder.vue')).toContain('<XPolicyLevelRanges');
 		expect(read('packages/frontend/src/pages/admin/roles.level-editor.vue')).not.toContain('policyKey');
+	});
+
+	test('level policy UI uses typed values, inclusive ends, and impact previews', () => {
+		const folder = read('packages/frontend/src/pages/admin/roles.policy-editor.folder.vue');
+		const ranges = read('packages/frontend/src/pages/admin/roles.policy-level-ranges.vue');
+		expect(folder.indexOf('<XPolicyLevelRanges')).toBeLessThan(folder.indexOf('<MkRange v-if="!isBaseRole'));
+		expect(folder).toContain('policyRangeCount');
+		expect(ranges).toContain("range.end - 1");
+		expect(ranges).toContain('stageToLevel(range.start)');
+		expect(ranges).toContain('levelToStage(Number(value))');
+		expect(ranges).toContain("range.type === 'base'");
+		expect(ranges).toContain("policyKind === 'boolean'");
+		expect(ranges).toContain("policyKey === 'optOutNotificationTypes'");
+		expect(ranges).toContain('toggleStringSetValue');
+		expect(ranges).toContain('impactInformation');
+		expect(ranges).toContain('WeakMap<EditablePolicyRange');
+		expect(ranges).not.toContain('JSON.parse');
+	});
+
+	test('experience curve shows its inputs in one row and cumulative previews', () => {
+		const source = read('packages/frontend/src/pages/admin/roles.level-editor.vue');
+		expect(source).toContain('$style.curveValues');
+		expect(source).toContain('experienceSimulationMax');
+		expect(source).toContain('curveTotal');
+	});
+
+	test('profile visibility action is an icon-only square button', () => {
+		const source = read('packages/frontend/src/pages/settings/other.vue');
+		expect(source).toContain('iconOnly');
+		expect(source).not.toContain("\n\t\t\t\t\t\t\t\tsmall\n");
 	});
 
 	test('admin user exposes set, signed adjustment, and multiply XP actions directly', () => {

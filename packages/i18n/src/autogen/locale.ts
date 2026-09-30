@@ -8215,13 +8215,17 @@ export interface Locale extends ILocale {
          */
         "policyRanges": string;
         /**
-         * 開始段階を含み、終了段階を含まない範囲です。baseは通常のロール・サーバーポリシーを維持します。
+         * レベルごとに適用するポリシーを設定します。
          */
         "policyRangesDescription": string;
         /**
-         * このポリシーに適用するレベル範囲を設定します。未指定のレベルでは通常のロール値を使用します。
+         * このポリシーに適用するレベル範囲を設定します。範囲は連続し、開始レベルと最大レベルまでを常に覆います。
          */
         "perPolicyRangesDescription": string;
+        /**
+         * {count} 件のレベルポリシー
+         */
+        "policyRangeCount": ParameterizedString<"count">;
         /**
          * ポリシー範囲 {n}
          */
@@ -8235,9 +8239,17 @@ export interface Locale extends ILocale {
          */
         "startStage": string;
         /**
-         * 終了段階（含まない）
+         * 終了段階
          */
         "endStage": string;
+        /**
+         * 開始レベル
+         */
+        "startPolicyLevel": string;
+        /**
+         * 終了レベル
+         */
+        "endPolicyLevel": string;
         /**
          * ポリシーキー
          */
@@ -8246,10 +8258,6 @@ export interface Locale extends ILocale {
          * 固定値
          */
         "constantValue": string;
-        /**
-         * JSON値として入力します（true、10、"available"など）。
-         */
-        "constantValueDescription": string;
         /**
          * 基準値
          */
@@ -8278,6 +8286,34 @@ export interface Locale extends ILocale {
          * 段階加算
          */
         "multiplier": string;
+        /**
+         * 変更なし
+         */
+        "noPolicyChange": string;
+        /**
+         * 他のポリシーに影響されません
+         */
+        "noPolicyChangeDescription": string;
+        /**
+         * 影響情報
+         */
+        "impactInformation": string;
+        /**
+         * 計算式:
+         */
+        "formula": string;
+        /**
+         * Lv.{level}: {value}
+         */
+        "policySimulation": ParameterizedString<"level" | "value">;
+        /**
+         * Lv.{level}: {cost} XP ({from} ～ {to} XP)
+         */
+        "experienceSimulation": ParameterizedString<"level" | "cost" | "from" | "to">;
+        /**
+         * Lv.{level}: MAX ({from} ～ XP)
+         */
+        "experienceSimulationMax": ParameterizedString<"level" | "from">;
         /**
          * 通常値を使用
          */

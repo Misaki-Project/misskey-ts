@@ -13,6 +13,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 					<span class="name"><MkUserName class="name" :user="user"/></span>
 					<span class="sub"><span class="acct _monospace">@{{ acct(user) }}</span></span>
 					<span class="state">
+						<span v-if="deleted" class="deleted">Deleted</span>
 						<span v-if="suspended" class="suspended">Suspended</span>
 						<span v-if="silenced" class="silenced">Silenced</span>
 						<span v-if="moderator" class="moderator">Moderator</span>
@@ -150,12 +151,19 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 		<div v-else-if="tab === 'roles'" class="_gaps">
 			<MkButton v-if="user.host == null" primary rounded @click="assignRole"><i class="ti ti-plus"></i> {{ i18n.ts.assign }}</MkButton>
+			<MkInfo v-if="roleLevelUnavailable" warn>{{ i18n.ts._roleLevel.unavailable }}</MkInfo>
 
 			<div v-for="role in info.roles" :key="role.id">
 				<div :class="$style.roleItemMain">
 					<MkRolePreview :class="$style.role" :role="role" :forModeration="true"/>
+					<div v-if="roleLevelByRoleId.get(role.id)" :class="$style.roleLevelControls">
+						<XRoleLevelValue :level="roleLevelByRoleId.get(role.id)!"/>
+						<button v-tooltip="i18n.ts._roleLevel.setExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.setExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'set')"><i class="ti ti-equal"></i></button>
+						<button v-tooltip="i18n.ts._roleLevel.adjustExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.adjustExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'add')">±</button>
+						<button v-tooltip="i18n.ts._roleLevel.multiplyExperience" class="_button" :class="$style.roleLevelAction" :aria-label="i18n.ts._roleLevel.multiplyExperience" @click="changeRoleExperience(roleLevelByRoleId.get(role.id)!, 'multiplier')">＊</button>
+					</div>
 					<button class="_button" @click="toggleRoleItem(role)"><i class="ti ti-chevron-down"></i></button>
-					<button v-if="role.target === 'manual'" class="_button" :class="$style.roleUnassign" @click="unassignRole(role, $event)"><i class="ti ti-x"></i></button>
+					<button v-if="role.target === 'manual' || (role.target as string) === 'manualLevel'" class="_button" :class="$style.roleUnassign" @click="unassignRole(role, $event)"><i class="ti ti-x"></i></button>
 					<button v-else class="_button" :class="$style.roleUnassign" disabled><i class="ti ti-ban"></i></button>
 				</div>
 				<div v-if="expandedRoleIds.includes(role.id)" :class="$style.roleItemSub">
@@ -267,8 +275,11 @@ import { ensureSignin, iAmAdmin, iAmModerator } from '@/i.js';
 import XEmojiApplications from '@/pages/admin-user.emoji-applications.vue';
 import XRelatedAccounts from '@/pages/admin-user.related-accounts.vue';
 import MkRolePreview from '@/components/MkRolePreview.vue';
+import XRoleLevelValue from '@/pages/admin-user.role-level-value.vue';
 import MkPagination from '@/components/MkPagination.vue';
 import { Paginator } from '@/utility/paginator.js';
+import { roleLevelApi } from '@/utility/role-level-api.js';
+import type { RoleLevelAdminUserResponse, RoleLevelUserRole } from '@/utility/role-level-api.js';
 
 const $i = ensureSignin();
 
@@ -298,6 +309,9 @@ const ap = ref<Misskey.entities.ApGetResponse | null>(null);
 const moderator = ref(info.value.isModerator);
 const silenced = ref(info.value.isSilenced);
 const suspended = ref(info.value.isSuspended);
+const deleted = computed(() =>
+	(info.value as unknown as { isDeleted?: boolean }).isDeleted === true ||
+	(user.value as unknown as { isDeleted?: boolean }).isDeleted === true);
 const isSystem = ref(user.value.host == null && user.value.username.includes('.'));
 
 // **backend の gate と同じ条件にする (#2961)。** `admin/emoji-application/*` は
@@ -318,6 +332,38 @@ const canSeeRelatedAccounts = computed(() => !isSystem.value &&
 	// mk-go 固有 policy は autogen 型に無いのでキャストする (admin/index.vue と同じ)。
 	(iAmAdmin || ($i.policies as unknown as Record<string, unknown>).canSearchIpHistory === true));
 const moderationNote = ref(info.value.moderationNote);
+const roleLevelData = ref<RoleLevelAdminUserResponse | null>(null);
+const roleLevelUnavailable = ref(false);
+const roleLevelByRoleId = computed(() => new Map((roleLevelData.value?.roles ?? []).map(role => [role.roleId, role])));
+
+async function refreshRoleLevels() {
+	try {
+		roleLevelData.value = await roleLevelApi<RoleLevelAdminUserResponse>('plugin/role-level/admin/users/show', { userId: props.userId });
+		roleLevelUnavailable.value = false;
+	} catch {
+		roleLevelData.value = null;
+		roleLevelUnavailable.value = true;
+	}
+}
+
+await refreshRoleLevels();
+
+async function changeRoleExperience(current: RoleLevelUserRole, mode: 'set' | 'add' | 'multiplier') {
+	const input = await os.inputNumber({
+		title: i18n.ts._roleLevel.editExperience,
+		default: mode === 'set' ? current.experience : mode === 'multiplier' ? 1 : 0,
+	});
+	if (input.canceled) return;
+	await roleLevelApi('plugin/role-level/admin/change-exp', {
+		idempotencyKey: crypto.randomUUID(),
+		userId: props.userId,
+		roleId: current.roleId,
+		mode,
+		operand: input.result,
+	});
+	await refreshRoleLevels();
+}
+
 const filesPaginator = markRaw(new Paginator('admin/drive/files', {
 	limit: 10,
 	computedParams: computed(() => ({
@@ -374,6 +420,7 @@ async function refreshUser() {
 	suspended.value = info.value.isSuspended;
 	isSystem.value = user.value.host == null && user.value.username.includes('.');
 	moderationNote.value = info.value.moderationNote;
+	await refreshRoleLevels();
 }
 
 async function updateRemoteUser() {
@@ -684,7 +731,7 @@ definePage(() => ({
 				display: none;
 			}
 
-			> .suspended, > .silenced, > .moderator {
+			> .deleted, > .suspended, > .silenced, > .moderator {
 				display: inline-block;
 				border: solid 1px;
 				border-radius: 6px;
@@ -692,7 +739,7 @@ definePage(() => ({
 				font-size: 85%;
 			}
 
-			> .suspended {
+			> .deleted, > .suspended {
 				color: var(--MI_THEME-error);
 				border-color: var(--MI_THEME-error);
 			}
@@ -760,6 +807,26 @@ definePage(() => ({
 	height: 32px;
 	margin-left: 8px;
 	align-self: center;
+}
+
+.roleLevelControls {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 4px;
+}
+
+.roleLevelAction {
+	width: 28px;
+	height: 28px;
+	border: solid 1px var(--MI_THEME-divider);
+	border-radius: 6px;
+	color: var(--MI_THEME-accent);
+	font-weight: 700;
+
+	&:hover {
+		background: var(--MI_THEME-buttonHoverBg);
+	}
 }
 
 .announcementItem {

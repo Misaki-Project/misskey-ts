@@ -16,7 +16,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<template #label>{{ i18n.ts.info }}</template>
 				<XEditor :modelValue="role" readonly/>
 			</MkFolder>
-			<MkFolder v-if="role.target === 'manual'" defaultOpen>
+			<MkFolder v-if="role.target === 'manual' || role.target === 'manualLevel'" defaultOpen>
 				<template #icon><i class="ti ti-users"></i></template>
 				<template #label>{{ i18n.ts.users }}</template>
 				<template #suffix>{{ role.usersCount }}</template>
@@ -68,6 +68,8 @@ import MkInfo from '@/components/MkInfo.vue';
 import MkPagination from '@/components/MkPagination.vue';
 import { useRouter } from '@/router.js';
 import { Paginator } from '@/utility/paginator.js';
+import { defaultRoleLevelConfig, isLegacyLevelRole, roleLevelApi } from '@/utility/role-level-api.js';
+import type { RoleLevelConfig } from '@/utility/role-level-api.js';
 
 const router = useRouter();
 
@@ -84,9 +86,15 @@ const usersPaginator = markRaw(new Paginator('admin/roles/users', {
 
 const expandedItemIds = ref<Misskey.entities.AdminRolesUsersResponse[number]['id'][]>([]);
 
-const role = reactive(await misskeyApi('admin/roles/show', {
+const nativeRole = await misskeyApi('admin/roles/show', {
 	roleId: props.id,
-}));
+});
+const levelResponse = await roleLevelApi<{ role: RoleLevelConfig }>('plugin/role-level/admin/roles/show', { roleId: props.id }).catch(() => null);
+const role = reactive({
+	...nativeRole,
+	target: levelResponse != null || isLegacyLevelRole(nativeRole as { target: string }) ? 'manualLevel' as const : nativeRole.target,
+	levelConfig: levelResponse?.role ?? defaultRoleLevelConfig(props.id),
+});
 
 function edit() {
 	router.push('/admin/roles/:id/edit', {
@@ -102,10 +110,15 @@ async function del() {
 		text: i18n.tsx.deleteAreYouSure({ x: role.name }),
 	});
 	if (canceled) return;
-
 	await os.apiWithDialog('admin/roles/delete', {
 		roleId: role.id,
 	});
+	if (levelResponse != null) {
+		await roleLevelApi('plugin/role-level/admin/roles/delete', {
+			roleId: role.id,
+			revision: levelResponse.role.revision,
+		});
+	}
 
 	router.push('/admin/roles');
 }

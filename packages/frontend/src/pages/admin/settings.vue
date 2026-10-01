@@ -96,6 +96,26 @@ SPDX-License-Identifier: AGPL-3.0-only
 					</MkFolder>
 				</SearchMarker>
 
+				<SearchMarker v-slot="slotProps" :keywords="['single', 'user', 'mode']">
+					<MkFolder :defaultOpen="slotProps.isParentOfTarget">
+						<template #icon><SearchIcon><i class="ti ti-user"></i></SearchIcon></template>
+						<template #label><SearchLabel>{{ i18n.ts._serverSettings.singleUserMode }}</SearchLabel></template>
+						<template v-if="singleUserModeForm.modified.value" #footer>
+							<MkFormFooter :form="singleUserModeForm"/>
+						</template>
+
+						<SearchMarker>
+							<MkSwitch v-model="singleUserModeForm.state.singleUserMode">
+								<template #label><SearchLabel>{{ i18n.ts._serverSettings.singleUserMode }}</SearchLabel><span v-if="singleUserModeForm.modifiedStates.singleUserMode" class="_modified">{{ i18n.ts.modified }}</span></template>
+								<template #caption>
+									<div><SearchText>{{ i18n.ts._serverSettings.singleUserMode_description }}</SearchText></div>
+									<div>{{ i18n.ts._mkgoAdminWarnings.singleUserModeEffect }}</div>
+								</template>
+							</MkSwitch>
+						</SearchMarker>
+					</MkFolder>
+				</SearchMarker>
+
 				<SearchMarker v-slot="slotProps" :keywords="['pinned', 'users']">
 					<MkFolder :defaultOpen="slotProps.isParentOfTarget">
 						<template #icon><SearchIcon><i class="ti ti-user-star"></i></SearchIcon></template>
@@ -403,6 +423,7 @@ import MkFolder from '@/components/MkFolder.vue';
 import { useForm } from '@/composables/use-form.js';
 import MkFormFooter from '@/components/MkFormFooter.vue';
 import MkRadios from '@/components/MkRadios.vue';
+import { knownSingleUserMode } from '@/utility/admin-setting-warnings.js';
 
 const meta = await misskeyApi('admin/meta');
 
@@ -433,6 +454,18 @@ const infoForm = useForm({
 		impressumUrl: state.impressumUrl,
 	});
 	fetchInstance(true);
+});
+
+// お一人様モードは初期設定ウィザードでしか変えられず、やり直すと登録や連合の設定まで
+// 上書きされる (#3190)。ここではこの値だけを送る。
+const singleUserModeForm = useForm({
+	singleUserMode: meta.singleUserMode,
+}, async (state) => {
+	await os.apiWithDialog('admin/update-meta', {
+		singleUserMode: state.singleUserMode,
+	});
+	// コントロールパネルのトップは横に表示されたままなので、再読み込みを待たずに伝える。
+	knownSingleUserMode.value = state.singleUserMode;
 });
 
 const pinnedUsersForm = useForm({
@@ -543,7 +576,14 @@ async function openSetupWizard() {
 
 	const { dispose } = await os.popupAsyncWithDialog(import('@/components/MkServerSetupWizardDialog.vue').then(x => x.default), {
 	}, {
-		closed: () => dispose(),
+		closed: () => {
+			dispose();
+			// ウィザードもお一人様モードを書き換える。横に表示されたままのコントロールパネルの
+			// トップへ、再読み込みを待たずに伝える (#3190)。
+			misskeyApi('admin/meta').then(updated => {
+				knownSingleUserMode.value = updated.singleUserMode;
+			}, () => {});
+		},
 	});
 }
 

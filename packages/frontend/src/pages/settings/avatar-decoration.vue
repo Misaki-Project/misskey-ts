@@ -260,15 +260,10 @@ async function pickEmojiDecoration(ev: PointerEvent) {
 		await os.alert({ type: 'error', text: i18n.ts._mkgoAvatarDecoration.sensitiveEmojiNotAllowed });
 		return;
 	}
-	// **ロール制限もここで見る。** ピッカー側の絞り込み (`canReact`) は
-	// `targetNote` を渡したときしか働かないので、制限付きの絵文字も候補に出る。
-	// backend は設定時に弾くが、角度や位置を調整させた後で「装着」が失敗する
-	// のは、Unicode 絵文字やセンシティブを直後に弾く扱いと揃わない。
-	const restrictedTo = emoji.roleIdsThatCanBeUsedThisEmojiAsReaction;
-	if (restrictedTo != null && restrictedTo.length > 0 && !$i.roles.some(r => restrictedTo.includes(r.id))) {
-		await os.alert({ type: 'error', text: i18n.ts._mkgoAvatarDecoration.emojiRestrictedByRole });
-		return;
-	}
+	// **ロール制限はここでは見ない (mk-go #3240)。** `$i.roles` には公開ロールしか
+	// 入らない (本家と同じ) ので、非公開ロールに限った絵文字を、そのロールを持つ
+	// 本人にまで弾いてしまう。判定は backend (全ロールで見る) に任せ、弾かれたら
+	// 「装着」のときに emojiRestrictedByRole を出す (下の customErrors)。
 
 	openDecoration({
 		id: '',

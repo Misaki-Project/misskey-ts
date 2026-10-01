@@ -107,6 +107,7 @@ import { instance } from '@/instance.js';
 import { i18n } from '@/i18n.js';
 import { login } from '@/accounts.js';
 import { resolveLocalUsernameState, resolveMinimumUsernameLength } from '@/utility/local-username.js';
+import { isRegistrationClosedError } from '@/utility/registration-mode.js';
 import { debounce } from 'throttle-debounce';
 
 const props = withDefaults(defineProps<{
@@ -358,13 +359,16 @@ async function onSubmit(): Promise<void> {
 			}
 		}
 	} else {
-		onSignupApiError();
+		// mk-go: 受け付けていないことは他の失敗と分けて伝える (#3186)。招待コードの
+		// 誤りに見えると、利用者はコードを打ち直し続ける。
+		const body = res ? await res.json().catch(() => null) as { error?: unknown } | null : null;
+		onSignupApiError(isRegistrationClosedError(body?.error) ? i18n.ts._mkgoRegistration.closedNotice : undefined);
 	}
 
 	submitting.value = false;
 }
 
-function onSignupApiError() {
+function onSignupApiError(text?: string) {
 	submitting.value = false;
 	hcaptcha.value?.reset?.();
 	mcaptcha.value?.reset?.();
@@ -374,7 +378,7 @@ function onSignupApiError() {
 
 	os.alert({
 		type: 'error',
-		text: i18n.ts.somethingHappened,
+		text: text ?? i18n.ts.somethingHappened,
 	});
 }
 </script>

@@ -227,6 +227,22 @@ export function getUserMenu(user: Misskey.entities.UserDetailed, router: Router 
 		});
 	}
 
+	// mk-go (#3232): バブルゲームの対戦の履歴。対戦はこのサーバーの利用者どうしだけ
+	// なので、ローカルの利用者にだけ出す。
+	if ($i && user.host == null) {
+		menuItems.push({
+			icon: 'ti ti-device-gamepad',
+			text: i18n.ts._mkgoBubbleGame._versus.history,
+			action: () => {
+				router.push('/bubble-game/versus/history/:userId?', {
+					params: {
+						userId: user.id,
+					},
+				});
+			},
+		});
+	}
+
 	if (notesSearchAvailable && (user.host == null || canSearchNonLocalNotes)) {
 		menuItems.push({
 			icon: 'ti ti-search',

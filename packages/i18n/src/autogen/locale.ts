@@ -9311,6 +9311,62 @@ export interface Locale extends ILocale {
          */
         "evicted": ParameterizedString<"n">;
         /**
+         * 配送を止めている相手
+         */
+        "breakersTitle": string;
+        /**
+         * 停止中
+         */
+        "breakerOpen": string;
+        /**
+         * 間隔を空けている
+         */
+        "breakerThrottled": string;
+        /**
+         * 止めた時刻
+         */
+        "breakerOpenedAt": string;
+        /**
+         * 次に試す時刻
+         */
+        "breakerNextProbe": string;
+        /**
+         * 連続{failures}回失敗・{interval}ごとに試す
+         */
+        "breakerDetail": ParameterizedString<"failures" | "interval">;
+        /**
+         * 間隔を空ける期限
+         */
+        "breakerThrottledUntil": string;
+        /**
+         * 待たせた分を送っている
+         */
+        "breakerDraining": string;
+        /**
+         * 送り終わる見込み
+         */
+        "breakerReservedUntil": string;
+        /**
+         * 再開する
+         */
+        "breakerClose": string;
+        /**
+         * {host}への配送を再開しますか？待たせている配送は数分以内に送られます。相手がまだ応答しないか429を返せば、また止まります。
+         */
+        "breakerCloseConfirm": ParameterizedString<"host">;
+        /**
+         * 接続できないか5xxが続く相手への配送は止め、ときどき1件だけ試して、応答があれば自動で再開します。429を返した相手には指定された時間だけ配送を待たせ、明けたあとは待たせた分を間隔を空けて1件ずつ送ります。「再開する」で、待たせている配送をすぐに流せます。止めている間の配送は捨てずに待たせ、7日間応答が無ければ自動で配送停止になります。
+         */
+        "breakersNote": string;
+        /**
+         * {n}分
+         */
+        "minutes": ParameterizedString<"n">;
+        /**
+         * {n}時間
+         */
+        "hours": ParameterizedString<"n">;
+        /**
          * 連合先の名簿ではありません。この期間に配送した相手だけが出ます。沈黙している相手は現れないので、一覧に無いことは正常を意味しません。
          */
         "deliverNote": string;
@@ -9328,7 +9384,7 @@ export interface Locale extends ILocale {
              */
             "gone": string;
             /**
-             * 相手は健在で、流量を絞っているだけです。再送で吸収されます。
+             * 相手は健在で、流量を絞っているだけです。指定された間隔だけ、この相手への配送を待たせます。
              */
             "rateLimited": string;
             /**
@@ -9336,11 +9392,11 @@ export interface Locale extends ILocale {
              */
             "clientError": string;
             /**
-             * 相手側の一時障害です。再送します。続くようなら相手に連絡してください。
+             * 相手側の一時障害です。再送します。続くと配送を止め、ときどき試して復旧したら再開します。長引くようなら相手に連絡してください。
              */
             "serverError": string;
             /**
-             * HTTP応答に至っていません。DNS・TCP・TLS・タイムアウトのいずれかです。再送します。
+             * HTTP応答に至っていません。DNS・TCP・TLS・タイムアウトのいずれかです。再送します。続くと配送を止め、ときどき試して復旧したら再開します。
              */
             "transport": string;
             /**
@@ -9375,6 +9431,474 @@ export interface Locale extends ILocale {
              * 処理中に失敗しました。再試行されます。
              */
             "processingError": string;
+        };
+    };
+    "_goneInstances": {
+        /**
+         * 消えたサーバー
+         */
+        "tab": string;
+        /**
+         * 共有の受け口が410を返し、もう存在しないと判定して配送を止めているサーバーです。そのサーバーの利用者とのフォロー関係は自動では消えないので、ここで片付けられます。
+         */
+        "description": string;
+        /**
+         * 消えたサーバーの一覧を取得できませんでした。この backend が対応していないか、権限がありません。
+         */
+        "unavailable": string;
+        /**
+         * 消えたサーバーはありません。
+         */
+        "none": string;
+        /**
+         * 消えたと判定した日時
+         */
+        "goneSince": string;
+        /**
+         * 不明
+         */
+        "unknown": string;
+        /**
+         * 相手からのフォロー{followers}件・相手へのフォロー{following}件・フォローリクエスト{requests}件
+         */
+        "relations": ParameterizedString<"followers" | "following" | "requests">;
+        /**
+         * フォロー関係を片付ける
+         */
+        "clean": string;
+        /**
+         * {host}の利用者とのフォロー関係を片付けますか？相手からのフォロー{followers}件と相手へのフォロー{following}件を解除し、フォローリクエスト{requests}件を消します。元に戻せません。利用者への通知やWebhookは出ません。
+         */
+        "cleanConfirm": ParameterizedString<"host" | "followers" | "following" | "requests">;
+        /**
+         * 片付けました（相手からのフォロー{followers}件・相手へのフォロー{following}件・フォローリクエスト{requests}件）
+         */
+        "cleaned": ParameterizedString<"followers" | "following" | "requests">;
+        /**
+         * まだ{n}件残っています。もう一度実行してください。
+         */
+        "remaining": ParameterizedString<"n">;
+        /**
+         * このサーバーはもう消えたサーバーとして扱われていません（配送停止の状態が変更されています）。途中まで片付けていた場合、その件数は監査ログに記録されています。一覧を読み直しました。
+         */
+        "notGone": string;
+        /**
+         * このサーバーの片付けは別の操作で実行中です。終わってから一覧を読み直してください。
+         */
+        "inProgress": string;
+    };
+    "_databaseHealth": {
+        /**
+         * テーブル
+         */
+        "tabTables": string;
+        /**
+         * 健全性
+         */
+        "tabHealth": string;
+        /**
+         * PostgreSQLの統計から、使われていないインデックスと、テーブルごとの不要な行（dead tuple）やVACUUMの状況を表示します。判断の材料を出すだけで、何も削除しません。サーバーは統計を1分間保持するので、開き直しても1分以内は同じ内容です。
+         */
+        "description": string;
+        /**
+         * 統計を取得できませんでした。
+         */
+        "unavailable": string;
+        /**
+         * 取得した日時
+         */
+        "generatedAt": string;
+        /**
+         * 統計をリセットした記録
+         */
+        "statsReset": string;
+        /**
+         * 記録はありません
+         */
+        "statsNeverReset": string;
+        /**
+         * インデックスの利用回数は、統計が消えてから数えています。統計はリセットのほか、異常終了やフェイルオーバーでも消えますが、そのときは上の記録が変わりません。統計が消えた直後は、使われているインデックスも「使われていない」と表示されます（通常の再起動では消えません）。
+         */
+        "statsResetCaption": string;
+        /**
+         * 読み取りレプリカが有効です。統計はプライマリから読むため、レプリカで使われているインデックスも「使われていない」と表示されます。
+         */
+        "replicasNote": string;
+        /**
+         * 使われていないインデックス
+         */
+        "unusedIndexes": string;
+        /**
+         * 書き込みのたびに更新する手間だけがかかっています。ただし、外部キーで参照されている行を削除するとき（アカウントの削除など）にだけ使われるインデックスもあり、消すとその処理が遅くなります。消すかどうかは、下の注意も確かめてから判断してください。
+         */
+        "unusedIndexesCaption": string;
+        /**
+         * 使われていないインデックスはありません。
+         */
+        "noUnusedIndexes": string;
+        /**
+         * 制約を支えています（削除できません）
+         */
+        "constraint": string;
+        /**
+         * テーブル
+         */
+        "tables": string;
+        /**
+         * 不要な行の割合が高いテーブルや、自動VACUUMが走るはずの量を超えても長くVACUUMされていないテーブルは、放置すると膨らみ続けて性能が落ちます。サイズは最後のVACUUM・ANALYZEの時点の見積もりです（TOASTの分はVACUUMの時点）。
+         */
+        "tablesCaption": string;
+        /**
+         * サイズ不明（まだVACUUM・ANALYZEされていません）
+         */
+        "sizeUnknown": string;
+        /**
+         * VACUUM中
+         */
+        "vacuuming": string;
+        /**
+         * 不要な行 {n}件（{ratio}%）
+         */
+        "deadRows": ParameterizedString<"n" | "ratio">;
+        /**
+         * 有効な行 {n}件
+         */
+        "liveRows": ParameterizedString<"n">;
+        /**
+         * 最後のVACUUM
+         */
+        "lastVacuum": string;
+        /**
+         * 最後のANALYZE
+         */
+        "lastAnalyze": string;
+        /**
+         * まだありません
+         */
+        "never": string;
+        /**
+         * 要確認
+         */
+        "needsAttention": string;
+        /**
+         * 不要な行の割合が高い
+         */
+        "problemBloat": string;
+        /**
+         * 自動VACUUMが走るはずの量を超えても、長くVACUUMされていない
+         */
+        "problemVacuum": string;
+    };
+    "_federationRules": {
+        /**
+         * ルール
+         */
+        "tab": string;
+        /**
+         * 受信した投稿やactivityに、条件と動作の組を当てはめます。サーバー単位のブロックやサイレンスより細かい判断に使い、それらと併せて効きます。まず「記録だけ」で当たり具合を確かめてから「有効」にしてください。
+         */
+        "description": string;
+        /**
+         * ルールを取得できませんでした。このbackendが対応していないか、権限がありません。
+         */
+        "unavailable": string;
+        /**
+         * ルールはありません。
+         */
+        "none": string;
+        /**
+         * ルールの変更は管理者だけができます。
+         */
+        "readOnly": string;
+        /**
+         * ルールを追加
+         */
+        "add": string;
+        /**
+         * 名前のないルール
+         */
+        "untitled": string;
+        /**
+         * 名前
+         */
+        "name": string;
+        /**
+         * 動作
+         */
+        "mode": string;
+        /**
+         * 無効
+         */
+        "modeDisabled": string;
+        /**
+         * 記録だけ
+         */
+        "modeRecord": string;
+        /**
+         * 有効
+         */
+        "modeEnforce": string;
+        /**
+         * 「記録だけ」は当たった投稿やactivityを記録するだけで、何も変えません。
+         */
+        "modeCaption": string;
+        /**
+         * 対象
+         */
+        "target": string;
+        /**
+         * 投稿
+         */
+        "targetNote": string;
+        /**
+         * activity
+         */
+        "targetActivity": string;
+        /**
+         * 「投稿」は本文や添付まで見て、拒否や書き換えができます。ブーストや返信先として取り込む投稿と、編集にも効きます。「activity」はフォローやリアクションなどを種類で見て、拒否だけができます。
+         */
+        "targetCaption": string;
+        /**
+         * 評価順
+         */
+        "position": string;
+        /**
+         * 小さいものから順に評価します。付けるCWの文言は最初に当たったルールのものを使います。
+         */
+        "positionCaption": string;
+        /**
+         * 条件
+         */
+        "conditions": string;
+        /**
+         * 指定した条件をすべて満たすと当たります。複数行の欄は、どれか1行に当たれば満たします。
+         */
+        "conditionsCaption": string;
+        /**
+         * サーバー
+         */
+        "hosts": string;
+        /**
+         * 1行に1つ。サブドメインも含みます（ブロックと同じ書き方です）。
+         */
+        "hostsCaption": string;
+        /**
+         * activityの種類
+         */
+        "activityTypes": string;
+        /**
+         * botかどうか
+         */
+        "isBot": string;
+        /**
+         * 問わない
+         */
+        "any": string;
+        /**
+         * botだけ
+         */
+        "bot": string;
+        /**
+         * bot以外
+         */
+        "notBot": string;
+        /**
+         * 初めて見てからの時間
+         */
+        "newWithinHours": string;
+        /**
+         * このサーバーが初めて見てから指定した時間（時間単位）以内のアカウントに当たります。空欄なら問いません。
+         */
+        "newWithinHoursCaption": string;
+        /**
+         * 本文・CWのパターン
+         */
+        "patterns": string;
+        /**
+         * 禁止ワードと同じ書き方です。1行に1つで、スペースで区切るとすべてを含むものに当たり、/で囲むと正規表現になります。
+         */
+        "patternsCaption": string;
+        /**
+         * 添付
+         */
+        "hasAttachment": string;
+        /**
+         * 添付あり
+         */
+        "withAttachment": string;
+        /**
+         * 添付なし
+         */
+        "withoutAttachment": string;
+        /**
+         * ハッシュタグ
+         */
+        "tags": string;
+        /**
+         * 1行に1つ。#は付けても付けなくても構いません。
+         */
+        "tagsCaption": string;
+        /**
+         * 動作
+         */
+        "actions": string;
+        /**
+         * 拒否する
+         */
+        "reject": string;
+        /**
+         * メディアを落とす
+         */
+        "stripMedia": string;
+        /**
+         * 添付をセンシティブにする
+         */
+        "sensitive": string;
+        /**
+         * その人が同じ画像を添付した他の投稿でもセンシティブになります。
+         */
+        "sensitiveCaption": string;
+        /**
+         * タイムラインから外す
+         */
+        "unlist": string;
+        /**
+         * サイレンスと同じく、公開の投稿をホームに落とします。
+         */
+        "unlistCaption": string;
+        /**
+         * 付けるCW
+         */
+        "cw": string;
+        /**
+         * CWの無い投稿に付けます。送信者が付けたCWは上書きしません。
+         */
+        "cwCaption": string;
+        /**
+         * 直近24時間に当たった件数: {n}
+         */
+        "hits": ParameterizedString<"n">;
+        /**
+         * 当たった記録を見る
+         */
+        "showHits": string;
+        /**
+         * 記録はありません。
+         */
+        "noHits": string;
+        /**
+         * 適用
+         */
+        "applied": string;
+        /**
+         * 記録のみ
+         */
+        "recordedOnly": string;
+        /**
+         * ルール「{name}」を削除しますか？当たった記録も消えます。
+         */
+        "deleteConfirm": ParameterizedString<"name">;
+        /**
+         * 条件を変えると、それまでに当たった記録は消えます。
+         */
+        "conditionsResetNote": string;
+        /**
+         * 「{field}」には0以上の整数を入れてください。
+         */
+        "invalidNumber": ParameterizedString<"field">;
+    };
+    "_federationCheck": {
+        /**
+         * 疎通の診断
+         */
+        "tab": string;
+        /**
+         * このサーバーから相手へ実際に接続して、連合に必要な窓口が応答するかを1回だけ確かめます。相手へ投稿や配送は送りません。
+         */
+        "description": string;
+        /**
+         * 確かめるアカウント
+         */
+        "account": string;
+        /**
+         * 省略すると、このサーバーが知っている相手のユーザーを使います。相手のユーザーを知らないときは、アカウント名を指定すると確かめられる項目が増えます。
+         */
+        "accountCaption": string;
+        /**
+         * 診断する
+         */
+        "run": string;
+        /**
+         * 診断しています…
+         */
+        "running": string;
+        /**
+         * 問題は見つかりませんでした
+         */
+        "allOk": string;
+        /**
+         * 連合を妨げている問題があります
+         */
+        "hasFailure": string;
+        /**
+         * 注意が必要な項目があります
+         */
+        "hasWarning": string;
+        /**
+         * このサーバー自身はここでは診断できません。
+         */
+        "cannotCheckSelf": string;
+        "_status": {
+            /**
+             * 問題なし
+             */
+            "ok": string;
+            /**
+             * 注意
+             */
+            "warn": string;
+            /**
+             * 問題あり
+             */
+            "fail": string;
+            /**
+             * 確かめられず
+             */
+            "skip": string;
+        };
+        "_names": {
+            /**
+             * このサーバーの設定
+             */
+            "policy": string;
+            /**
+             * サーバー情報 (nodeinfo)
+             */
+            "nodeinfo": string;
+            /**
+             * アカウントの検索 (WebFinger)
+             */
+            "webfinger": string;
+            /**
+             * アカウントの情報 (actor)
+             */
+            "actor": string;
+            /**
+             * 署名付きの取得
+             */
+            "authorized-fetch": string;
+            /**
+             * 配送の受け口 (inbox)
+             */
+            "inbox": string;
+            /**
+             * 署名方式
+             */
+            "signature": string;
+            /**
+             * 直近の配送
+             */
+            "delivery": string;
         };
     };
     "_remoteEmojiImport": {
@@ -12097,6 +12621,22 @@ export interface Locale extends ILocale {
          */
         "resetEmojiApplicationQuota": string;
         /**
+         * 消えたサーバーとのフォロー関係を片付け
+         */
+        "cleanGoneInstance": string;
+        /**
+         * 連合のルールを作成
+         */
+        "createFederationRule": string;
+        /**
+         * 連合のルールを更新
+         */
+        "updateFederationRule": string;
+        /**
+         * 連合のルールを削除
+         */
+        "deleteFederationRule": string;
+        /**
          * ジョブキューをクリア
          */
         "clearQueue": string;
@@ -14238,6 +14778,256 @@ export interface Locale extends ILocale {
          */
         "emojiDisabledButWorn": ParameterizedString<"n">;
     };
+    "_mkgoEmoji": {
+        /**
+         * インポートしてリアクション
+         */
+        "importAndReact": string;
+    };
+    "_mkgoBubbleGame": {
+        /**
+         * モード
+         */
+        "mode": string;
+        /**
+         * 物理
+         */
+        "physics": string;
+        /**
+         * 通常の物理です。
+         */
+        "physicsDefault": string;
+        /**
+         * よく弾みます。玉の上でも床と同じくらい跳ね返ります。
+         */
+        "physicsBouncy": string;
+        /**
+         * 跳ねず、滑りにくく、壁や玉に触れると吸い付くように動きが鈍ります。壁に触れた玉はゆっくりずり落ちます。
+         */
+        "physicsFriction": string;
+        /**
+         * 中断したゲームがあります
+         */
+        "resumeTitle": string;
+        /**
+         * 続きから再開しますか？最初から始めると、中断したゲームは消えます。
+         */
+        "resumeText": string;
+        /**
+         * 続きから
+         */
+        "resumeContinue": string;
+        /**
+         * 最初から
+         */
+        "resumeNew": string;
+        /**
+         * 再開しています
+         */
+        "resuming": string;
+        /**
+         * ゲームが更新されたため、中断したゲームは再開できません。最初から始めます。
+         */
+        "saveDiscardedVersion": string;
+        /**
+         * 中断してから時間が経ちすぎたため、中断したゲームは再開できません。最初から始めます。
+         */
+        "saveDiscardedExpired": string;
+        "_versus": {
+            /**
+             * バブルゲーム対戦
+             */
+            "title": string;
+            /**
+             * 対戦
+             */
+            "section": string;
+            /**
+             * このサーバーの人を招待して1対1で遊びます。続けて合体させる（2連鎖以上）とおじゃま石が相手に降ります。先に積み上がった方の負けで、5分経ったら得点の高い方の勝ちです。
+             */
+            "description": string;
+            /**
+             * 招待して対戦
+             */
+            "inviteButton": string;
+            /**
+             * 上で選んだモードと物理（{mode}）で対戦します。
+             */
+            "inviteHint": ParameterizedString<"mode">;
+            /**
+             * 届いている招待
+             */
+            "invitations": string;
+            /**
+             * 対戦に招待されています。
+             */
+            "invitedYou": string;
+            /**
+             * 受ける
+             */
+            "acceptInvitation": string;
+            /**
+             * 断る
+             */
+            "declineInvitation": string;
+            /**
+             * 相手の返事を待っています
+             */
+            "waitingForAnswer": string;
+            /**
+             * 2人とも準備ができたら始まります。
+             */
+            "readyDescription": string;
+            /**
+             * 準備OK
+             */
+            "ready": string;
+            /**
+             * 準備中
+             */
+            "notReady": string;
+            /**
+             * やめる
+             */
+            "leave": string;
+            /**
+             * この対局は進行中ですが、読み込み直したため再開できません。
+             */
+            "cannotResume": string;
+            /**
+             * 対局が見つかりません。期限が切れたか、取り消されました。
+             */
+            "notFound": string;
+            /**
+             * 招待は断られました。
+             */
+            "declined": string;
+            /**
+             * 相手が対局をやめました。
+             */
+            "canceled": string;
+            /**
+             * 結果を送れませんでした。もう一度送ってください。
+             */
+            "reportFailed": string;
+            /**
+             * 結果を送り直す
+             */
+            "resendReport": string;
+            /**
+             * 操作できませんでした
+             */
+            "operationFailed": string;
+            /**
+             * 結果は送りました。相手の結果を待っています
+             */
+            "waitingForOpponentResult": string;
+            /**
+             * 時間切れ
+             */
+            "timeUp": string;
+            /**
+             * 相手の盤面
+             */
+            "opponentBoard": string;
+            /**
+             * 終了
+             */
+            "opponentFinished": string;
+            /**
+             * 降ってくるおじゃま石
+             */
+            "pendingStones": string;
+            /**
+             * 勝ち
+             */
+            "win": string;
+            /**
+             * 負け
+             */
+            "lose": string;
+            /**
+             * 引き分け
+             */
+            "draw": string;
+            /**
+             * 先に積み上がった方の負けです。
+             */
+            "reasonGameOver": string;
+            /**
+             * 投了で決まりました。
+             */
+            "reasonSurrender": string;
+            /**
+             * 時間切れです。得点で決まりました。
+             */
+            "reasonTimeUp": string;
+            /**
+             * 切断で決まりました。
+             */
+            "reasonDisconnected": string;
+            /**
+             * 記録が不正だったため、報告した側の負けになりました。
+             */
+            "reasonInvalidReport": string;
+            /**
+             * {name}さんからバブルゲームの対戦に招待されました
+             */
+            "newInvitation": ParameterizedString<"name">;
+            /**
+             * 対戦の履歴
+             */
+            "history": string;
+            /**
+             * {name}さんの対戦の履歴
+             */
+            "historyOf": ParameterizedString<"name">;
+            /**
+             * 対戦の記録は終局から30日で消えます。2人とも公開にした対局は、ログインしている人が見られます。
+             */
+            "historyDescription": string;
+            /**
+             * 対戦の記録はありません
+             */
+            "noHistory": string;
+            /**
+             * 公開する
+             */
+            "publicSwitch": string;
+            /**
+             * 公開中
+             */
+            "publicBoth": string;
+            /**
+             * 相手が公開すると公開されます
+             */
+            "publicWaiting": string;
+            /**
+             * リプレイを見る
+             */
+            "showReplay": string;
+            /**
+             * 対戦のリプレイ
+             */
+            "replayTitle": string;
+            /**
+             * この盤面は別の版のゲームで遊ばれたため、再生できません。
+             */
+            "replayVersionMismatch": string;
+            /**
+             * この盤面の記録はありません。
+             */
+            "replayNoLogs": string;
+            /**
+             * 最初から再生
+             */
+            "replayRestart": string;
+            /**
+             * 2人の盤面はゲームのフレーム単位で揃えて再生します。実際の時間の流れとは少しずれることがあります。
+             */
+            "replayFrameNote": string;
+        };
+    };
     "_mkgoNotification": {
         /**
          * 絵文字 :{name}: の登録申請が届きました
@@ -14283,6 +15073,14 @@ export interface Locale extends ILocale {
          * 他のモデレーターが対処しました
          */
         "abuseReportResolvedBySomeone": string;
+        /**
+         * 未対応 {n} 件
+         */
+        "abuseReportUnresolvedCount": ParameterizedString<"n">;
+        /**
+         * 未対応の通報を一覧で見る
+         */
+        "openUnresolvedReports": string;
         /**
          * 絵文字 :{name}: の申請が承認されました
          */
@@ -15219,5 +16017,85 @@ export interface Locale extends ILocale {
          * 却下の理由を入力してください。申請者にはこの文面しか届きません。
          */
         "rejectReasonRequired": string;
+    };
+    "_mkgoAdminWarnings": {
+        /**
+         * 非表示にした警告が{n}件あります。
+         */
+        "hiddenCount": ParameterizedString<"n">;
+        /**
+         * 再表示
+         */
+        "showHidden": string;
+        /**
+         * 警告の表示状態を保存できませんでした。
+         */
+        "saveFailed": string;
+        /**
+         * 有効にすると、コントロールパネルに設定の警告（管理者情報・問い合わせ先・Botプロテクション・メールサーバー）を出さなくなります。そのほかの動作は変わりません。
+         */
+        "singleUserModeEffect": string;
+    };
+    "_mkgoRegistration": {
+        /**
+         * 登録の受け付け方
+         */
+        "mode": string;
+        /**
+         * 誰でも登録できる
+         */
+        "open": string;
+        /**
+         * アカウント作成に制限を設けません。
+         */
+        "openCaption": string;
+        /**
+         * 招待制
+         */
+        "invite": string;
+        /**
+         * 招待コードを持っている人だけが登録できます。
+         */
+        "inviteCaption": string;
+        /**
+         * 承認制
+         */
+        "approval": string;
+        /**
+         * 申請フォームに答えてもらい、承認した相手だけが登録できます。
+         */
+        "approvalCaption": string;
+        /**
+         * 受け付けない
+         */
+        "closed": string;
+        /**
+         * 招待コード・承認済みの申請・メール確認待ちの登録も含めて、すべての登録を止めます。
+         */
+        "closedCaption": string;
+        /**
+         * 新規登録の受け付けを止めますか？途中まで進んでいる登録も止まります。申請・確認待ち・招待コードの記録は消えないので、再開すれば有効期限内のものはそのまま使えます（承認済みの申請は、承認制で再開した場合に使えます）。
+         */
+        "closeConfirm": string;
+        /**
+         * 承認された相手には確認メールを送ります。
+         */
+        "approvalEmailNote": string;
+        /**
+         * 申請は登録申請の画面で確認できます。
+         */
+        "approvalListNote": string;
+        /**
+         * 現在、新規登録を受け付けていません。
+         */
+        "closedNotice": string;
+        /**
+         * 現在は新規登録を受け付けていないため、発行した招待コードは受け付けを再開するまで使えません。
+         */
+        "inviteUnusableWhileClosed": string;
+        /**
+         * 承認制と招待制が同時に有効になっていて、どこからも登録できない状態です。受け付け方を選び直してください。
+         */
+        "inconsistent": string;
     };
 }

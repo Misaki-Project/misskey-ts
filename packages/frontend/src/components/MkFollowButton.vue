@@ -4,27 +4,43 @@ SPDX-License-Identifier: AGPL-3.0-only
 -->
 
 <template>
+<!--
+	mk-go (#3185): disableIfFollowing のときは**フォローする以外の操作を出さない**。
+	フォローされた通知から使うので、そこでフォロー解除 / 申請の取り消しができる必要は
+	無い (ボタンのままだと「フォロー中」「申請中」を押すとそれぞれに進む)。
+	**v-if / v-else を root に置く** — 1 つの root として扱われるので、親から渡る
+	class / attrs はどれにも落ちる。
+-->
+<span v-if="disableIfFollowing && isFollowing" :class="$style.followingText"><i class="ti ti-check"></i> {{ i18n.ts.youFollowing }}</span>
+<span v-else-if="disableIfFollowing && hasPendingFollowRequestFromYou" :class="$style.followingText"><i class="ti ti-hourglass-empty"></i> {{ isLocked ? i18n.ts.followRequestPending : i18n.ts.processing }}</span>
+<!--
+	状態が分かるまでは何も出さない。出すと相互フォローの行で「フォロー」が一瞬見えて
+	「フォロー中」に切り替わり、users/show が失敗したとき (相手が凍結された等) は
+	押せないボタンが残り続ける。
+-->
+<span v-else-if="disableIfFollowing && isFollowing == null"></span>
 <button
+	v-else
 	class="_button"
 	:class="[$style.root, { [$style.wait]: wait, [$style.active]: isFollowing || hasPendingFollowRequestFromYou, [$style.full]: full, [$style.large]: large }]"
 	:disabled="wait"
 	@click="onClick"
 >
 	<template v-if="!wait">
-		<template v-if="hasPendingFollowRequestFromYou && user.isLocked">
+		<template v-if="hasPendingFollowRequestFromYou && isLocked">
 			<span v-if="full" :class="$style.text">{{ i18n.ts.followRequestPending }}</span><i class="ti ti-hourglass-empty"></i>
 		</template>
-		<template v-else-if="hasPendingFollowRequestFromYou && !user.isLocked">
+		<template v-else-if="hasPendingFollowRequestFromYou && !isLocked">
 			<!-- つまりリモートフォローの場合。 -->
 			<span v-if="full" :class="$style.text">{{ i18n.ts.processing }}</span><MkLoading :em="true" :colored="false"/>
 		</template>
 		<template v-else-if="isFollowing">
 			<span v-if="full" :class="$style.text">{{ i18n.ts.youFollowing }}</span><i class="ti ti-minus"></i>
 		</template>
-		<template v-else-if="!isFollowing && user.isLocked">
+		<template v-else-if="!isFollowing && isLocked">
 			<span v-if="full" :class="$style.text">{{ i18n.ts.followRequest }}</span><i class="ti ti-plus"></i>
 		</template>
-		<template v-else-if="!isFollowing && !user.isLocked">
+		<template v-else-if="!isFollowing && !isLocked">
 			<span v-if="full" :class="$style.text">{{ i18n.ts.follow }}</span><i class="ti ti-plus"></i>
 		</template>
 	</template>
@@ -35,7 +51,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 </template>
 
 <script lang="ts" setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import * as Misskey from 'misskey-js';
 import { host } from '@@/js/config.js';
 import * as os from '@/os.js';
@@ -52,9 +68,19 @@ const props = withDefaults(defineProps<{
 	user: Misskey.entities.UserDetailed,
 	full?: boolean,
 	large?: boolean,
+	/**
+	 * Show plain text instead of a button when already following (#3185).
+	 *
+	 * mk-go 独自。CherryPick の同名オプションに相当するが、設定で切り替えずに
+	 * 呼び出し側 (フォローされた通知) が固定で渡す。フォロー中・申請中は文字だけ出し、
+	 * フォロー状態が分かるまではボタンを出さない — 分かる前に押すと、既にフォロー中の
+	 * 相手へ following/create を送ってエラーになる。
+	 */
+	disableIfFollowing?: boolean,
 }>(), {
 	full: false,
 	large: false,
+	disableIfFollowing: false,
 });
 
 const emit = defineEmits<{
@@ -62,6 +88,13 @@ const emit = defineEmits<{
 }>();
 
 const isFollowing = ref(props.user.isFollowing);
+// mk-go (#3185): users/show で補ったときに鍵の有無も拾う。通知の `user` (UserLite) は
+// `isLocked` を持たないので、拾わないとフォローした後に「フォロー申請中」ではなく
+// 「処理中」のまま止まる (申請中かどうかの判定が鍵の有無に依存している)。
+// **拾っていなければ props を読む (computed)。** ref に写すと、プロフィールの
+// 引っ張って更新 (`user` の差し替え) に追従しなくなる。
+const fetchedIsLocked = ref<boolean | null>(null);
+const isLocked = computed(() => fetchedIsLocked.value ?? props.user.isLocked);
 const hasPendingFollowRequestFromYou = ref(props.user.hasPendingFollowRequestFromYou);
 const wait = ref(false);
 const connection = useStream().useChannel('main');
@@ -70,13 +103,18 @@ if (props.user.isFollowing == null && $i) {
 	misskeyApi('users/show', {
 		userId: props.user.id,
 	})
-		.then(onFollowChange);
+		.then(onFollowChange)
+		// mk-go (#3185): 相手が凍結 / 削除されていると失敗する (フォローされた通知では
+		// 普通に起きる)。握らないと未処理の reject になる。状態が分からないままなので、
+		// disableIfFollowing のときはボタンを出さない。
+		.catch(() => {});
 }
 
 function onFollowChange(user: Misskey.entities.UserDetailed) {
 	if (user.id === props.user.id) {
 		isFollowing.value = user.isFollowing;
 		hasPendingFollowRequestFromYou.value = user.hasPendingFollowRequestFromYou;
+		fetchedIsLocked.value = user.isLocked;
 	}
 }
 
@@ -184,6 +222,11 @@ onBeforeUnmount(() => {
 </script>
 
 <style lang="scss" module>
+.followingText {
+	font-size: 0.9em;
+	opacity: 0.7;
+}
+
 .root {
 	position: relative;
 	display: inline-block;

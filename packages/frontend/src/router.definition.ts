@@ -633,6 +633,16 @@ export const ROUTE_DEF = [{
 	component: page(() => import('@/pages/drop-and-fusion.vue')),
 	loginRequired: true,
 }, {
+	// mk-go (#3232): 対戦の履歴とリプレイ。**対局の画面 (:matchId) より前に置く** —
+	// 後ろに置くと history / replay が対局の ID として拾われる。
+	path: '/bubble-game/versus/history/:userId?',
+	component: page(() => import('@/pages/drop-and-fusion.versus.history.vue')),
+	loginRequired: true,
+}, {
+	path: '/bubble-game/versus/replay/:matchId',
+	component: page(() => import('@/pages/drop-and-fusion.versus.replay.vue')),
+	loginRequired: true,
+}, {
 	// mk-go (#3231): バブルゲームの 1:1 対戦。
 	path: '/bubble-game/versus/:matchId',
 	component: page(() => import('@/pages/drop-and-fusion.versus.vue')),

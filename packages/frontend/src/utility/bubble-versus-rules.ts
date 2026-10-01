@@ -123,3 +123,21 @@ export function outcomeFor(match: Pick<VersusMatch, 'status' | 'winnerId'>, user
 	if (match.winnerId == null) return 'draw';
 	return match.winnerId === userId ? 'win' : 'lose';
 }
+
+/**
+ * Whether one board of a stored match can be replayed (mk-go #3232).
+ *
+ * 記録が無い盤面 (切断した側など) は再生しない。版が違う盤面も再生しない — 同じ
+ * 記録でも、ルールや物理が変わった版のエンジンでは別の結末になる。版を送らない
+ * 古いクライアントの記録は、どの版で遊ばれたか分からないので再生しない。
+ */
+export function replayPlayability(opts: {
+	logs: number[][] | null | undefined;
+	result: { gameVersion: number | null } | null | undefined;
+	engineVersion: number;
+}): 'ok' | 'noLogs' | 'versionMismatch' {
+	// 空の記録 (ロビーでの投了) は盤面が動かないので、記録が無いのと同じに扱う。
+	if (opts.logs == null || opts.logs.length === 0 || opts.result == null) return 'noLogs';
+	if (opts.result.gameVersion == null || opts.result.gameVersion !== opts.engineVersion) return 'versionMismatch';
+	return 'ok';
+}

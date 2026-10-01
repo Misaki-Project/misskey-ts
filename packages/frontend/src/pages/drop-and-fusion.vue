@@ -55,6 +55,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 							<div style="font-size: 90%; opacity: 0.8;">{{ i18n.tsx._mkgoBubbleGame._versus.inviteHint({ mode: dropAndFusionModeLabel(gameMode) }) }}</div>
 							<div class="_buttonsCenter">
 								<MkButton primary rounded @click="inviteVersus">{{ i18n.ts._mkgoBubbleGame._versus.inviteButton }}</MkButton>
+								<MkButton rounded @click="openVersusHistory"><i class="ti ti-history"></i> {{ i18n.ts._mkgoBubbleGame._versus.history }}</MkButton>
 							</div>
 							<template v-if="versusInvitations.length > 0">
 								<div><b>{{ i18n.ts._mkgoBubbleGame._versus.invitations }}</b></div>
@@ -265,6 +266,11 @@ async function fetchVersusInvitations() {
 
 function openVersus(matchId: string) {
 	router.push('/bubble-game/versus/:matchId', { params: { matchId } });
+}
+
+// mk-go (#3232): 自分の対戦の履歴。
+function openVersusHistory() {
+	router.push('/bubble-game/versus/history/:userId?', { params: {} });
 }
 
 async function inviteVersus() {

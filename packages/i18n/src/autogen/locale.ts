@@ -14748,6 +14748,58 @@ export interface Locale extends ILocale {
              * {name}さんからバブルゲームの対戦に招待されました
              */
             "newInvitation": ParameterizedString<"name">;
+            /**
+             * 対戦の履歴
+             */
+            "history": string;
+            /**
+             * {name}さんの対戦の履歴
+             */
+            "historyOf": ParameterizedString<"name">;
+            /**
+             * 対戦の記録は終局から30日で消えます。2人とも公開にした対局は、ログインしている人が見られます。
+             */
+            "historyDescription": string;
+            /**
+             * 対戦の記録はありません
+             */
+            "noHistory": string;
+            /**
+             * 公開する
+             */
+            "publicSwitch": string;
+            /**
+             * 公開中
+             */
+            "publicBoth": string;
+            /**
+             * 相手が公開すると公開されます
+             */
+            "publicWaiting": string;
+            /**
+             * リプレイを見る
+             */
+            "showReplay": string;
+            /**
+             * 対戦のリプレイ
+             */
+            "replayTitle": string;
+            /**
+             * この盤面は別の版のゲームで遊ばれたため、再生できません。
+             */
+            "replayVersionMismatch": string;
+            /**
+             * この盤面の記録はありません。
+             */
+            "replayNoLogs": string;
+            /**
+             * 最初から再生
+             */
+            "replayRestart": string;
+            /**
+             * 2人の盤面はゲームのフレーム単位で揃えて再生します。実際の時間の流れとは少しずれることがあります。
+             */
+            "replayFrameNote": string;
         };
     };
     "_mkgoNotification": {

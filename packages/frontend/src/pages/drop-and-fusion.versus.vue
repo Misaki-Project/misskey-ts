@@ -118,6 +118,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 						<div style="opacity: 0.8;">{{ reasonLabel }}</div>
 						<div class="_buttonsCenter">
 							<MkButton primary rounded @click="leave">{{ i18n.ts.backToTitle }}</MkButton>
+							<MkButton rounded @click="openReplay">{{ i18n.ts._mkgoBubbleGame._versus.showReplay }}</MkButton>
 						</div>
 					</template>
 				</div>
@@ -129,6 +130,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 <script lang="ts" setup>
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, useTemplateRef } from 'vue';
+import { DropAndFusionGame } from 'misskey-bubble-game';
 import XGame from './drop-and-fusion.game.vue';
 import XBoard from './drop-and-fusion.versus.board.vue';
 import { definePage } from '@/page.js';
@@ -144,6 +146,7 @@ import { useInterval } from '@@/js/use-interval.js';
 import { useStream } from '@/stream.js';
 import { dropAndFusionModeLabel } from '@/utility/drop-and-fusion-mode.js';
 import { connectVersusMatch, versusApi } from '@/utility/bubble-versus.js';
+import { versusOutcomeLabel, versusReasonLabel } from '@/utility/bubble-versus-labels.js';
 import type { VersusBoardState, VersusConnection, VersusMatch, VersusReport, VersusStarted } from '@/utility/bubble-versus.js';
 import {
 	REPORT_RETRY_DELAYS_MS,
@@ -208,26 +211,9 @@ function scoreOf(i: number): number | null {
 	return i === mySide.value ? localFinalScore.value : null;
 }
 
-const outcomeLabel = computed(() => {
-	if (match.value == null) return '';
-	switch (outcomeFor(match.value, $i?.id)) {
-		case 'win': return i18n.ts._mkgoBubbleGame._versus.win;
-		case 'lose': return i18n.ts._mkgoBubbleGame._versus.lose;
-		case 'draw': return i18n.ts._mkgoBubbleGame._versus.draw;
-		default: return '';
-	}
-});
+const outcomeLabel = computed(() => match.value == null ? '' : versusOutcomeLabel(outcomeFor(match.value, $i?.id)));
 
-const reasonLabel = computed(() => {
-	switch (match.value?.reason) {
-		case 'gameOver': return i18n.ts._mkgoBubbleGame._versus.reasonGameOver;
-		case 'surrender': return i18n.ts._mkgoBubbleGame._versus.reasonSurrender;
-		case 'timeUp': return i18n.ts._mkgoBubbleGame._versus.reasonTimeUp;
-		case 'disconnected': return i18n.ts._mkgoBubbleGame._versus.reasonDisconnected;
-		case 'invalidReport': return i18n.ts._mkgoBubbleGame._versus.reasonInvalidReport;
-		default: return '';
-	}
-});
+const reasonLabel = computed(() => versusReasonLabel(match.value?.reason));
 
 async function fetchMatch() {
 	try {
@@ -272,9 +258,13 @@ function connect() {
 		opponentState.value = x.state;
 	});
 	connection.on('ended', () => {
-		// 相手が先に終わると、こちらは報告しないまま対局の画面が閉じる。その時点の
-		// 得点を残して結果に出す (サーバーには残らない)。
-		if (gameEl.value != null) localFinalScore.value = gameEl.value.boardState().score;
+		// 相手が先に終わると、対局の画面はこの後の取り直しで閉じる。その前に
+		// この盤面を止めて、記録を報告する (勝敗には効かない。リプレイに残すため、
+		// #3232)。こちらが先に終わっていれば何もしない。得点は結果に出すために残す。
+		if (gameEl.value != null) {
+			localFinalScore.value = gameEl.value.boardState().score;
+			gameEl.value.finishByOpponentEnded();
+		}
 		fetchMatch();
 	});
 	connection.on('declined', () => {
@@ -360,6 +350,13 @@ async function sendReport() {
 				await new Promise(resolve => window.setTimeout(resolve, REPORT_RETRY_DELAYS_MS[attempt]));
 			}
 		}
+		// 相手の終局を受けての報告 (opponentEnded) は勝敗に効かず、終局後の画面には
+		// 送り直す手段も無いので、「送り直してください」とは言わない (リプレイに
+		// この盤面が出ないだけ)。
+		if (report.reason === 'opponentEnded') {
+			pendingReport.value = null;
+			return;
+		}
 		os.toast(i18n.ts._mkgoBubbleGame._versus.reportFailed);
 	} finally {
 		sendingReport.value = false;
@@ -393,11 +390,19 @@ async function surrenderFromLobby() {
 		frame: 0,
 		reason: 'surrender',
 		logs: [],
+		// mk-go (#3232): 記録は空でも版は付ける (付けないと「別の版」と区別できない)。
+		gameVersion: DropAndFusionGame.VERSION,
 	} as never) as VersusMatch;
 }
 
 function leave() {
 	router.push('/bubble-game');
+}
+
+// mk-go (#3232): 記録は両者の報告が届いてから並ぶので、終局の直後は片方の盤面しか
+// 無いことがある (リプレイの画面がその盤面を「記録が無い」と出す)。
+function openReplay() {
+	router.push('/bubble-game/versus/replay/:matchId', { params: { matchId: props.matchId } });
 }
 
 function onGameEnd() {

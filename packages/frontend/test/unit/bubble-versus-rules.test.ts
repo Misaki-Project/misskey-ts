@@ -13,6 +13,7 @@ import {
 	isRetryableReportError,
 	opponentOf,
 	outcomeFor,
+	replayPlayability,
 	remainingMs,
 	shouldClaimDisconnected,
 	sideOf,
@@ -120,5 +121,26 @@ describe('bubble game versus rules (#3231)', () => {
 		expect(outcomeFor(match({ status: 'ended', winnerId: 'alice' }), 'alice')).toBe('win');
 		expect(outcomeFor(match({ status: 'ended', winnerId: 'alice' }), 'bob')).toBe('lose');
 		expect(outcomeFor(match({ status: 'ended', winnerId: null }), 'bob')).toBe('draw');
+	});
+});
+
+describe('bubble game versus replay (mk-go #3232)', () => {
+	test('記録と版がそろった盤面だけ再生する', () => {
+		expect(replayPlayability({ logs: [[1, 0, 5]], result: { gameVersion: 4 }, engineVersion: 4 })).toBe('ok');
+	});
+
+	test('記録が無い盤面 (切断した側など) は再生しない', () => {
+		expect(replayPlayability({ logs: null, result: { gameVersion: 4 }, engineVersion: 4 })).toBe('noLogs');
+		expect(replayPlayability({ logs: undefined, result: null, engineVersion: 4 })).toBe('noLogs');
+		expect(replayPlayability({ logs: [[1, 0, 5]], result: null, engineVersion: 4 })).toBe('noLogs');
+		// ロビーでの投了は盤面が動かない。版が無くても、記録が空なら「記録が無い」。
+		expect(replayPlayability({ logs: [], result: { gameVersion: 4 }, engineVersion: 4 })).toBe('noLogs');
+		expect(replayPlayability({ logs: [], result: { gameVersion: null }, engineVersion: 4 })).toBe('noLogs');
+	});
+
+	test('版が違う・版が分からない盤面は再生しない', () => {
+		expect(replayPlayability({ logs: [[1, 0, 5]], result: { gameVersion: 3 }, engineVersion: 4 })).toBe('versionMismatch');
+		expect(replayPlayability({ logs: [[1, 0, 5]], result: { gameVersion: 5 }, engineVersion: 4 })).toBe('versionMismatch');
+		expect(replayPlayability({ logs: [[1, 0, 5]], result: { gameVersion: null }, engineVersion: 4 })).toBe('versionMismatch');
 	});
 });

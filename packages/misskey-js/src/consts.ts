@@ -105,6 +105,7 @@ export const permissions = [
 	'write:admin:meta',
 	'write:admin:user-note',
 	'write:admin:roles',
+	'write:admin:role-level-experience',
 	'read:admin:roles',
 	'write:admin:relays',
 	'read:admin:relays',

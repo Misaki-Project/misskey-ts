@@ -14,10 +14,17 @@ import { useStream } from '@/stream.js';
 export type VersusStatus = 'invited' | 'accepted' | 'playing' | 'ended';
 export type VersusReason = 'gameOver' | 'surrender' | 'timeUp' | 'disconnected' | 'invalidReport';
 
+/**
+ * The reason of one player's report. `opponentEnded` is sent after the
+ * opponent's report ended the match, only to keep the board for the replay
+ * (mk-go #3232). It never decides the outcome.
+ */
+export type VersusReportReason = 'gameOver' | 'surrender' | 'timeUp' | 'opponentEnded';
+
 export type VersusResultSummary = {
 	score: number;
 	frame: number;
-	reason: VersusReason;
+	reason: VersusReason | 'opponentEnded';
 };
 
 /**
@@ -69,8 +76,46 @@ export type VersusStarted = {
 export type VersusReport = {
 	score: number;
 	frame: number;
-	reason: 'gameOver' | 'surrender' | 'timeUp';
+	reason: VersusReportReason;
 	logs: number[][];
+	/** The engine version the logs were made with (mk-go #3232). */
+	gameVersion?: number;
+};
+
+/**
+ * One player's side of a stored match record (mk-go #3232).
+ */
+export type VersusRecordResult = {
+	score: number;
+	frame: number;
+	reason: VersusReason | 'opponentEnded';
+	/** The engine version the logs were made with. null when the client did not send it. */
+	gameVersion: number | null;
+};
+
+/**
+ * A finished match as returned by `bubble-game/versus/history` and `record`.
+ * `seed` and the logs are only present on `record`.
+ */
+export type VersusRecord = {
+	id: string;
+	gameMode: GameMode;
+	startedAt: string;
+	endedAt: string | null;
+	winnerId: string | null;
+	reason: VersusReason | null;
+	isPublic: boolean;
+	user1Id: string;
+	user2Id: string;
+	user1: Misskey.entities.UserLite | null;
+	user2: Misskey.entities.UserLite | null;
+	user1Public: boolean;
+	user2Public: boolean;
+	user1Result: VersusRecordResult | null;
+	user2Result: VersusRecordResult | null;
+	seed?: string;
+	user1Logs?: number[][] | null;
+	user2Logs?: number[][] | null;
 };
 
 export function versusApi<T = unknown>(endpoint: string, params: Record<string, unknown> = {}): Promise<T> {

@@ -11,6 +11,7 @@ import type { BaseGameMode, GamePhysics } from 'misskey-bubble-game';
 vi.mock('@/i.js', () => ({ $i: { id: 'user1' } }));
 import { clearDropAndFusionSave, isDropAndFusionSaveExpired, loadDropAndFusionSave, SAVE_MAX_AGE_MS, writeDropAndFusionSave } from '@/utility/drop-and-fusion-save.js';
 import { fastForwardGame } from '@/utility/drop-and-fusion-fast-forward.js';
+import { createReplayCursor } from '@/utility/drop-and-fusion-replay.js';
 import { dropAndFusionModeLabel, dropAndFusionScoreUnit } from '@/utility/drop-and-fusion-mode.js';
 
 type Mode = ConstructorParameters<typeof DropAndFusionGame>[0]['gameMode'];
@@ -1154,4 +1155,126 @@ describe('bubble game versus (#3229)', () => {
 		const logs = [{ frame: 10, operation: 'drop' as const, x: 100 }, { frame: 10, operation: 'garbage' as const, count: 3 }];
 		expect(DropAndFusionGame.deserializeLogs(DropAndFusionGame.serializeLogs(logs))).toEqual(logs);
 	});
+});
+
+/**
+ * mk-go (#3232): 対戦の記録は、遊んだ版のエンジンでしか同じ結末に再生できない。
+ * 記録には版を残し、リプレイは版が違えば再生しない。**だから対戦のルールを変えたら
+ * 版を上げること。** 版を上げずにルールだけ変えると、古い記録が別の結末で再生される
+ * (しかも版が一致しているので止められない)。
+ *
+ * 版ごとに「その版のルール」を下の表で持ち、今の版の行と食い違えば落ちる。ルールを
+ * 変えるには、VERSION を上げて新しい行を足すしかない。**既にある行は書き換えない**
+ * (その版で遊ばれた記録の前提そのもの)。
+ */
+describe('versus rules are pinned per engine version (mk-go #3232)', () => {
+	type Outcome = { attackTotal: number; score: number; frame: number };
+	// 形と物理が一通り出るモード。物理 (BOUNCY / FRICTION / SPACE) や玉の定義を
+	// 版を上げずに変えたときも落ちるように、normal だけにしない。
+	const MODES = ['normal', 'bouncy', 'square-friction', 'yen', 'sweets-bouncy', 'space'] as const;
+	const RULES_BY_VERSION: Record<number, { rules: typeof VERSUS_RULES; outcomes: Record<typeof MODES[number], Outcome> }> = {
+		4: {
+			rules: { maxGarbagePerDrop: 5, maxPendingGarbage: 200, stonesPerAttack: 2, stoneLevel: 2, touchMargin: 2 },
+			outcomes: {
+				'normal': { attackTotal: 212, score: 755, frame: 3209 },
+				'bouncy': { attackTotal: 273, score: 1772, frame: 4636 },
+				'square-friction': { attackTotal: 109, score: 602, frame: 2962 },
+				'yen': { attackTotal: 173, score: 3409, frame: 3352 },
+				'sweets-bouncy': { attackTotal: 853, score: 23500, frame: 6642 },
+				'space': { attackTotal: 28, score: 242, frame: 1687 },
+			},
+		},
+	};
+
+	// 攻撃の式 (コンボの間隔・石の換算) と物理は定数の表には出ないので、決まった
+	// 場面で対局を回したときの「送った攻撃の合計」と得点・終わったフレームでも固定する。
+	function play(mode: typeof MODES[number]): Outcome {
+		const g = new DropAndFusionGame({ seed: 'rules-pin', gameMode: mode, getMonoRenderOptions: () => ({}), versus: true });
+		const rng = botRng(11);
+		let attackTotal = 0;
+		let score = 0;
+		let over = false;
+		g.on('attack', (n: number) => { attackTotal += n; });
+		g.on('changeScore', (v: number) => { score = v; });
+		g.on('gameOver', () => { over = true; });
+		g.start();
+		while (!over && g.frame < 60 * 60 * 2) {
+			if (g.frame % 35 === 0) g.drop(30 + rng() * 390);
+			if (g.frame % 97 === 0) g.receiveAttack(1 + Math.floor(rng() * 4));
+			if (!g.tick()) break;
+		}
+		return { attackTotal, score, frame: g.frame };
+	}
+
+	test('今の版の行がある', () => {
+		expect(RULES_BY_VERSION[DropAndFusionGame.VERSION]).toBeDefined();
+	});
+
+	test('対戦の定数が今の版の行と一致する', () => {
+		expect({ ...VERSUS_RULES }).toEqual(RULES_BY_VERSION[DropAndFusionGame.VERSION].rules);
+	});
+
+	test('攻撃の式と物理が今の版の行と一致する', () => {
+		const want = RULES_BY_VERSION[DropAndFusionGame.VERSION].outcomes;
+		const got = Object.fromEntries(MODES.map(m => [m, play(m)]));
+		expect(got).toEqual(want);
+	}, 120000);
+});
+
+// mk-go (#3232): 対戦のリプレイは記録から盤面を進める。対局と同じシードと記録から
+// 同じ結末になること。操作を当てるフレームが 1 つずれるだけで別の結末になる。
+describe('versus replay cursor (mk-go #3232)', () => {
+	function newVersusGame(seed: string) {
+		return new DropAndFusionGame({ seed, gameMode: 'normal', getMonoRenderOptions: () => ({}), versus: true });
+	}
+
+	function playOriginal(seed: string) {
+		const g = newVersusGame(seed);
+		const rng = botRng(5);
+		let score = 0;
+		let over = false;
+		g.on('changeScore', (v: number) => { score = v; });
+		g.on('gameOver', () => { over = true; });
+		g.start();
+		while (!over && g.frame < 60 * 60 * 2) {
+			// 同じフレームに保持と投下を重ねる (同じフレームの操作を全部当てるかを見る)。
+			if (g.frame % 140 === 0) g.hold();
+			if (g.frame % 35 === 0) g.drop(30 + rng() * 390);
+			if (g.frame % 97 === 0) g.receiveAttack(1 + Math.floor(rng() * 4));
+			if (!g.tick()) break;
+		}
+		return { g, score, frame: g.frame };
+	}
+
+	const stonesOf = (g: DropAndFusionGame) => g.engine.world.bodies
+		.filter(b => b.label === DropAndFusionGame.STONE_LABEL)
+		.map(b => [Math.round(b.position.x), Math.round(b.position.y)]);
+
+	test('対局と同じ記録から同じ結末になる (少しずつ進めても)', () => {
+		const first = playOriginal('replay-cursor');
+		const logs = DropAndFusionGame.deserializeLogs(DropAndFusionGame.serializeLogs(first.g.getLogs()));
+		const g = newVersusGame('replay-cursor');
+		let score = 0;
+		g.on('changeScore', (v: number) => { score = v; });
+		g.start();
+		const cursor = createReplayCursor(g, logs, first.frame);
+		let frame = 0;
+		while (cursor.advanceTo(frame += 7)) { /* 7 フレームずつ */ }
+		expect(cursor.done).toBe(true);
+		expect(g.frame).toBe(first.frame);
+		expect(score).toBe(first.score);
+		expect(stonesOf(g)).toEqual(stonesOf(first.g));
+	}, 60000);
+
+	test('終わったフレーム (時間切れ) で止まる', () => {
+		const first = playOriginal('replay-cursor');
+		const logs = DropAndFusionGame.deserializeLogs(DropAndFusionGame.serializeLogs(first.g.getLogs()));
+		const g = newVersusGame('replay-cursor');
+		g.start();
+		const cursor = createReplayCursor(g, logs, 500);
+		expect(cursor.advanceTo(400)).toBe(true);
+		expect(g.frame).toBe(400);
+		expect(cursor.advanceTo(10_000)).toBe(false);
+		expect(g.frame).toBe(500);
+	}, 60000);
 });

@@ -2840,6 +2840,7 @@ _permissions:
   "write:admin:meta": "インスタンスのメタデータを操作する"
   "write:admin:user-note": "モデレーションノートを操作する"
   "write:admin:roles": "ロールを操作する"
+  "write:admin:role-level-experience": "ロールの経験値を変更する"
   "read:admin:roles": "ロールを見る"
   "write:admin:relays": "リレーを操作する"
   "read:admin:relays": "リレーを見る"

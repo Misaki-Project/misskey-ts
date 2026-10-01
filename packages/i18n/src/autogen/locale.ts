@@ -10823,6 +10823,10 @@ export interface Locale extends ILocale {
          */
         "write:admin:roles": string;
         /**
+         * ロールの経験値を変更する
+         */
+        "write:admin:role-level-experience": string;
+        /**
          * ロールを見る
          */
         "read:admin:roles": string;

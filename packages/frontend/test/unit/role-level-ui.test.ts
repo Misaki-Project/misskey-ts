@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test } from 'vitest';
+import { permissions } from 'misskey-js';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -88,6 +89,13 @@ describe('role-level editor calculations', () => {
 });
 
 describe('role-level UI integration points', () => {
+	test('API key generation exposes the dedicated XP permission in the administrator group', () => {
+		const scope = 'write:admin:role-level-experience';
+		expect(permissions).toContain(scope);
+		expect(permissions.filter(permission => permission === scope)).toHaveLength(1);
+		expect(read('locales/ja-JP.yml')).toContain('"write:admin:role-level-experience": "ロールの経験値を変更する"');
+		expect(read('packages/frontend/src/components/MkTokenGenerateWindow.vue')).toContain("p.startsWith('write:admin')");
+	});
 	test('plugin adapter keeps credentials out of strict request bodies', () => {
 		const source = read('packages/frontend/src/utility/role-level-api.ts');
 		expect(source).toContain('Authorization: `Bearer ${$i.token}`');
@@ -128,6 +136,16 @@ describe('role-level UI integration points', () => {
 		expect(source).toContain('nextLevelExp');
 		expect(source).toContain('<Mfm');
 		expect(source).toContain('role="progressbar"');
+		expect(source).toContain('/ {{ levelCost }}');
+		expect(source).not.toContain('/ {{ level.level.nextLevelExp }}');
+		expect(source).toContain('roleLevelExperienceProgress(props.level?.level)');
+	});
+
+	test('admin user accessibility text uses the same full level cost as the tooltip', () => {
+		const source = read('packages/frontend/src/pages/admin-user.role-level-value.vue');
+		expect(source).toContain('roleLevelExperienceCost(props.level.level)');
+		expect(source).toContain('next: levelCost');
+		expect(source).not.toContain('next: props.level.level.nextLevelExp');
 	});
 
 	test('level policy ranges are attached to each native policy editor', () => {

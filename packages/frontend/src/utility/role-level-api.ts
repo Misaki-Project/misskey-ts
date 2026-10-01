@@ -42,6 +42,7 @@ export interface RoleLevelConfig {
 export interface RoleLevelExperience {
 	currentLevel: number;
 	currentLevelExp: number;
+	/** 次のレベルまでの残りXP。進捗表示の分母（必要XP全体）ではない。 */
 	nextLevelExp: number | null;
 	totalExp: number;
 	minLevel: number;

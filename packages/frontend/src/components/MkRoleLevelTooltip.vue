@@ -12,7 +12,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<template v-if="level.level.nextLevelExp == null">
 					(<strong>MAX!!</strong><template v-if="level.level.currentLevelExp > 0"> +{{ level.level.currentLevelExp }}</template>)
 				</template>
-				<template v-else>({{ level.level.currentLevelExp }} / {{ level.level.nextLevelExp }})</template>
+				<template v-else>({{ level.level.currentLevelExp }} / {{ levelCost }})</template>
 			</div>
 			<div :class="$style.gauge" role="progressbar" :aria-valuenow="progress" aria-valuemin="0" aria-valuemax="100">
 				<div :class="$style.gaugeValue" :style="{ width: `${progress}%` }"></div>
@@ -27,6 +27,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 import { computed } from 'vue';
 import MkTooltip from '@/components/MkTooltip.vue';
 import type { RoleLevelUserRole } from '@/utility/role-level-api.js';
+import { roleLevelExperienceCost, roleLevelExperienceProgress } from '@/utility/role-level-experience.js';
 
 const props = withDefaults(defineProps<{
 	showing: boolean;
@@ -42,12 +43,8 @@ const emit = defineEmits<{
 	(ev: 'closed'): void;
 }>();
 
-const progress = computed(() => {
-	if (props.level == null || props.level.level.nextLevelExp == null) return 100;
-	const levelCost = props.level.level.currentLevelExp + props.level.level.nextLevelExp;
-	if (levelCost <= 0) return 0;
-	return Math.min(100, Math.max(0, (props.level.level.currentLevelExp / levelCost) * 100));
-});
+const levelCost = computed(() => props.level == null ? null : roleLevelExperienceCost(props.level.level));
+const progress = computed(() => roleLevelExperienceProgress(props.level?.level));
 </script>
 
 <style lang="scss" module>

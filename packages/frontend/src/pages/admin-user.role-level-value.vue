@@ -21,6 +21,7 @@ import * as os from '@/os.js';
 import { useTooltip } from '@/composables/use-tooltip.js';
 import { i18n } from '@/i18n.js';
 import type { RoleLevelUserRole } from '@/utility/role-level-api.js';
+import { roleLevelExperienceCost } from '@/utility/role-level-experience.js';
 
 const props = defineProps<{
 	level: RoleLevelUserRole;
@@ -31,10 +32,11 @@ const keyboardShowing = ref(false);
 
 const accessibleLabel = computed(() => {
 	const levelLabel = i18n.tsx._roleLevel.level({ level: props.level.level.currentLevel });
-	if (props.level.level.nextLevelExp == null) return `${levelLabel}, ${i18n.ts._roleLevel.maxLevel}`;
+	const levelCost = roleLevelExperienceCost(props.level.level);
+	if (levelCost == null) return `${levelLabel}, ${i18n.ts._roleLevel.maxLevel}`;
 	return `${levelLabel}, ${i18n.tsx._roleLevel.experience({
 		current: props.level.level.currentLevelExp,
-		next: props.level.level.nextLevelExp,
+		next: levelCost,
 	})}`;
 });
 

@@ -25,6 +25,7 @@
  */
 
 import type { Component } from 'vue';
+import type { entities } from 'misskey-js';
 import { misskeyApi } from '@/utility/misskey-api.js';
 import { $i } from '@/i.js';
 
@@ -42,6 +43,23 @@ export { default as MkInput } from '@/components/MkInput.vue';
 export { default as MkButton } from '@/components/MkButton.vue';
 export { default as MkFolder } from '@/components/MkFolder.vue';
 export { default as MkLoading } from '@/components/global/MkLoading.vue';
+export { default as MkSelect } from '@/components/MkSelect.vue';
+export { default as MkSwitch } from '@/components/MkSwitch.vue';
+export { default as MkAvatar } from '@/components/global/MkAvatar.vue';
+export { default as MkUserName } from '@/components/global/MkUserName.vue';
+export { default as MkTime } from '@/components/global/MkTime.vue';
+export { default as PageWithHeader } from '@/components/global/PageWithHeader.vue';
+export { useMkSelect } from '@/composables/use-mkselect.js';
+export { definePage } from '@/page.js';
+
+/** 標準ユーザー表示コンポーネントへ渡す公開ユーザー情報。 */
+export type PluginUser = entities.UserLite;
+
+/** 一覧のアイコンを1回のAPI呼び出しで取得する。 */
+export async function getUsers(userIds: string[]): Promise<PluginUser[]> {
+	if (userIds.length === 0) return [];
+	return misskeyApi('users/show', { userIds });
+}
 
 /**
  * Named locations a plugin can render into.
@@ -139,6 +157,9 @@ export type PluginPage = {
 	/** ナビ項目のアイコン (例: 'ti ti-device-gamepad')。 */
 	navIcon?: string;
 
+	/** 「見つける」の追加タブにも表示する。componentはembedded propへ対応する。 */
+	explore?: boolean;
+
 	/**
 	 * 管理画面として `/admin/plugin/<name>` の下に置く。
 	 *
@@ -217,6 +238,11 @@ export function collectPages(plugins: PluginDefinition[], admin: boolean): PageR
 		}
 	}
 	return out;
+}
+
+/** 公開ページのうち、明示的に「見つける」へ追加したものだけを返す。 */
+export function collectExplorePages(plugins: PluginDefinition[]): PageRegistration[] {
+	return collectPages(plugins, false).filter(page => page.explore && page.navTitle);
 }
 
 /** Returns the mounts registered for a slot, ordered by plugin name. */

@@ -26,7 +26,7 @@ import MkCustomEmojiDetailedDialog from './MkCustomEmojiDetailedDialog.vue';
 import type { MenuItem } from '@/types/menu';
 import XDetails from '@/components/MkReactionsViewer.details.vue';
 import MkReactionIcon from '@/components/MkReactionIcon.vue';
-import { importRemoteEmoji, hasLocalEmojiWithSameName, bareEmojiName } from '@/utility/import-remote-emoji.js';
+import { importRemoteEmoji, importRemoteEmojiAndReact, canImportRemoteEmoji, hasLocalEmojiWithSameName, bareEmojiName } from '@/utility/import-remote-emoji.js';
 import { requestRemoteEmojiImport } from '@/utility/request-remote-emoji.js';
 import { bindLongPress } from '@/utility/long-press.js';
 import { localAlternativeReaction } from '@/utility/reaction-alternative.js';
@@ -98,13 +98,29 @@ const localAlternative = computed(() => {
 // localStorage なので、on にして sign out したブラウザで踏む)。
 const canReact = computed(() => canToggle.value || ($i != null && localAlternative.value != null));
 
-// 実際に送るリアクションと、その絵文字名。相乗りのときだけ `props.reaction` と違う。
+// 実際に送るリアクション。相乗りのときだけ `props.reaction` と違う。
 const sendingReaction = computed(() => localAlternative.value ?? props.reaction);
-const sendingEmojiName = computed(() => getEmojiNameFromReaction(sendingReaction.value));
 
 async function toggleReaction() {
 	if (!canReact.value) return;
+	await sendReaction(sendingReaction.value, localAlternative.value == null);
+}
+
+/**
+ * Sends (or withdraws) the given reaction on the note, asking first when it
+ * replaces or cancels the current one.
+ *
+ * mk-go (#3187): チップを押したときと「インポートしてリアクション」の両方から使う。
+ * 後者は取り込んだ絵文字 (`:name@.:`) を送るので、チップ自身のキーとは違う。
+ *
+ * `ownChip` は「送るのがこのチップ自身のキーか」。mock (チュートリアル) の emit は
+ * それが真のときだけ行う。**本体で `props.reaction` と比べない** — 送る文字列の
+ * 選び方をチップの identity に戻す変異を、ゲート (reaction_longpress_gate_test.go)
+ * が本体の単語で検出しているため。
+ */
+async function sendReaction(reaction: string, ownChip: boolean) {
 	if ($i == null) return;
+	const reactionEmojiName = getEmojiNameFromReaction(reaction);
 
 	const me = $i;
 
@@ -112,23 +128,23 @@ async function toggleReaction() {
 	if (oldReaction) {
 		const confirm = await os.confirm({
 			type: 'warning',
-			text: oldReaction !== sendingReaction.value ? i18n.ts.changeReactionConfirm : i18n.ts.cancelReactionConfirm,
+			text: oldReaction !== reaction ? i18n.ts.changeReactionConfirm : i18n.ts.cancelReactionConfirm,
 		});
 		if (confirm.canceled) return;
 
-		if (oldReaction !== sendingReaction.value) {
+		if (oldReaction !== reaction) {
 			sound.playMisskeySfx('reaction');
 			haptic();
 		}
 
 		if (mock) {
-			// **相乗りのときは emit しない。** 親は emit されたキーでチップを
-			// 引き当てて delta を計算するので (`MkReactionsViewer.vue` の
-			// `onMockToggleReaction`)、押したチップと送るキーが違う相乗りでは
+			// **押したチップと違うキーを送るとき (相乗り / インポートしてリアクション)
+			// は emit しない。** 親は emit されたキーでチップを引き当てて delta を
+			// 計算するので (`MkReactionsViewer.vue` の `onMockToggleReaction`)、
 			// 別のチップの count を動かすか no-op になる。mock を渡すのは
 			// `MkTutorialDialog.*` = **実利用者が通るチュートリアル**で、example note の
 			// reactions は空から始まるので相乗りできるチップは出ないが、契約を壊さない。
-			if (localAlternative.value == null) emit('reactionToggled', sendingReaction.value, (props.count - 1));
+			if (ownChip) emit('reactionToggled', reaction, (props.count - 1));
 			return;
 		}
 
@@ -139,18 +155,18 @@ async function toggleReaction() {
 				userId: me.id,
 				reaction: oldReaction,
 			});
-			if (oldReaction !== sendingReaction.value) {
+			if (oldReaction !== reaction) {
 				misskeyApi('notes/reactions/create', {
 					noteId: props.noteId,
-					reaction: sendingReaction.value,
+					reaction: reaction,
 				}).then(() => {
-					const emoji = customEmojisMap.get(sendingEmojiName.value);
-					if (emoji == null && getUnicodeEmojiOrNull(sendingReaction.value) == null) {
+					const emoji = customEmojisMap.get(reactionEmojiName);
+					if (emoji == null && getUnicodeEmojiOrNull(reaction) == null) {
 						return;
 					}
 					noteEvents.emit(`reacted:${props.noteId}`, {
 						userId: me.id,
-						reaction: sendingReaction.value,
+						reaction: reaction,
 						emoji: emoji,
 					});
 				});
@@ -160,7 +176,7 @@ async function toggleReaction() {
 		if (prefer.s.confirmOnReact) {
 			const confirm = await os.confirm({
 				type: 'question',
-				text: i18n.tsx.reactAreYouSure({ emoji: sendingReaction.value.replace('@.', '') }),
+				text: i18n.tsx.reactAreYouSure({ emoji: reaction.replace('@.', '') }),
 			});
 
 			if (confirm.canceled) return;
@@ -170,22 +186,22 @@ async function toggleReaction() {
 		haptic();
 
 		if (mock) {
-			if (localAlternative.value == null) emit('reactionToggled', sendingReaction.value, (props.count + 1));
+			if (ownChip) emit('reactionToggled', reaction, (props.count + 1));
 			return;
 		}
 
 		misskeyApi('notes/reactions/create', {
 			noteId: props.noteId,
-			reaction: sendingReaction.value,
+			reaction: reaction,
 		}).then(() => {
-			const emoji = customEmojisMap.get(sendingEmojiName.value);
-			if (emoji == null && getUnicodeEmojiOrNull(sendingReaction.value) == null) {
+			const emoji = customEmojisMap.get(reactionEmojiName);
+			if (emoji == null && getUnicodeEmojiOrNull(reaction) == null) {
 				return;
 			}
 
 			noteEvents.emit(`reacted:${props.noteId}`, {
 				userId: me.id,
-				reaction: sendingReaction.value,
+				reaction: reaction,
 				emoji: emoji,
 			});
 		});
@@ -232,7 +248,7 @@ async function menu(ev: PointerEvent | null, anchorElement?: HTMLElement) {
 	if (props.reaction.startsWith(':') && !isLocalCustomEmoji.value && !hasLocalEmojiWithSameName(emojiName.value) && $i != null) {
 		// リアクションの `emojiName` は `name@host` 形式。
 		const at = emojiName.value.lastIndexOf('@');
-		const canImport = $i.isModerator || $i.policies.canManageCustomEmojis;
+		const canImport = canImportRemoteEmoji();
 		// policies は mk-go 独自キーを含むので型を外して読む。
 		const canRequest = ($i.policies as Record<string, unknown>).canRequestCustomEmojis === true;
 
@@ -244,6 +260,21 @@ async function menu(ev: PointerEvent | null, anchorElement?: HTMLElement) {
 					importRemoteEmoji(emojiName.value.slice(0, at), emojiName.value.slice(at + 1));
 				},
 			});
+			// **取り込んだ絵文字でそのままリアクションする (#3187)。** 「この絵文字で
+			// リアクションしたいから取り込む」が大半なので、取り込み後にピッカーを
+			// 開き直させない。送るのは確定した名前 (取り込み時に直せる) の `:name@.:`。
+			// **mock (チュートリアル) では出さない。** 右クリックのメニューは mock でも
+			// 開くが、mock の sendReaction は API を呼ばないので、取り込むだけで
+			// リアクションされないまま終わる。
+			if (!mock) {
+				menuItems.push({
+					text: i18n.ts._mkgoEmoji.importAndReact,
+					icon: 'ti ti-mood-plus',
+					action: () => {
+						importRemoteEmojiAndReact(emojiName.value.slice(0, at), emojiName.value.slice(at + 1), (reaction) => sendReaction(reaction, false));
+					},
+				});
+			}
 		} else if (at > 0 && canRequest) {
 			menuItems.push({
 				text: i18n.ts._emojiApplication.requestImport,

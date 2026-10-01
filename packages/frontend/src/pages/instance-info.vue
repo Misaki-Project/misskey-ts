@@ -145,6 +145,33 @@ SPDX-License-Identifier: AGPL-3.0-only
 				</div>
 			</MkPagination>
 		</div>
+		<!--
+			mk-go: 連合先との疎通の診断 (#3055)。純正 backend にはこの endpoint が無い。
+			結果の detail / hint は backend が組み立てる文 (self-check と同じ形)。
+		-->
+		<div v-else-if="tab === 'check' && iAmModerator" class="_gaps_m">
+			<div :class="$style.checkCaption">{{ i18n.ts._federationCheck.description }}</div>
+			<MkInput v-model="checkAccount" type="text" :placeholder="`user@${host}`">
+				<template #label>{{ i18n.ts._federationCheck.account }}</template>
+				<template #caption>{{ i18n.ts._federationCheck.accountCaption }}</template>
+			</MkInput>
+			<div>
+				<MkButton primary :disabled="checking" @click="runCheck"><i class="ti ti-stethoscope"></i> {{ checking ? i18n.ts._federationCheck.running : i18n.ts._federationCheck.run }}</MkButton>
+			</div>
+			<template v-if="checkReport">
+				<MkInfo v-if="!checkReport.ok" warn>{{ i18n.ts._federationCheck.hasFailure }}</MkInfo>
+				<MkInfo v-else-if="checkReport.results.some(r => r.status === 'warn')" warn>{{ i18n.ts._federationCheck.hasWarning }}</MkInfo>
+				<MkInfo v-else-if="checkReport.results.length > 0">{{ i18n.ts._federationCheck.allOk }}</MkInfo>
+				<div v-for="r in checkReport.results" :key="r.name" :class="[$style.checkResult, $style[r.status]]">
+					<div :class="$style.checkHead">
+						<span>{{ checkName(r.name) }}</span>
+						<span :class="$style.checkStatus">{{ i18n.ts._federationCheck._status[r.status] }}</span>
+					</div>
+					<div v-if="r.detail" :class="$style.checkDetail">{{ r.detail }}</div>
+					<div v-if="r.hint" :class="$style.checkHint">{{ r.hint }}</div>
+				</div>
+			</template>
+		</div>
 		<div v-else-if="tab === 'raw'" class="_gaps_m">
 			<MkObjectView tall :value="instance">
 			</MkObjectView>
@@ -162,6 +189,8 @@ import MkObjectView from '@/components/MkObjectView.vue';
 import FormLink from '@/components/form/link.vue';
 import MkLink from '@/components/MkLink.vue';
 import MkButton from '@/components/MkButton.vue';
+import MkInfo from '@/components/MkInfo.vue';
+import MkInput from '@/components/MkInput.vue';
 import FormSection from '@/components/form/section.vue';
 import MkKeyValue from '@/components/MkKeyValue.vue';
 import MkPluginSlot from '@/components/MkPluginSlot.vue';
@@ -310,6 +339,43 @@ async function resumeDelivery(): Promise<void> {
 	});
 }
 
+// mk-go: admin/federation/check-host (#3055) の応答。internal/core/remotecheck の
+// Report と同じ形 (misskey-js の型に無いので手で持つ)。
+type CheckStatus = 'ok' | 'warn' | 'fail' | 'skip';
+type CheckReport = {
+	host: string;
+	ok: boolean;
+	results: { name: string; status: CheckStatus; detail: string; hint?: string }[];
+};
+
+const checkAccount = ref('');
+const checking = ref(false);
+const checkReport = ref<CheckReport | null>(null);
+
+// 検査名は backend が増やしうるので、知らない名前はそのまま出す。
+function checkName(name: string): string {
+	const names: Record<string, string | undefined> = i18n.ts._federationCheck._names;
+	return names[name] ?? name;
+}
+
+async function runCheck(): Promise<void> {
+	if (!iAmModerator) return;
+	checking.value = true;
+	checkReport.value = null;
+	try {
+		// endpoint 名の cast は misskey-js の型に存在しないため (mk-go 独自)。
+		checkReport.value = await misskeyApi('admin/federation/check-host' as never, { host: props.host, account: checkAccount.value } as never) as unknown as CheckReport;
+	} catch (err) {
+		const code = (err as { code?: string } | null)?.code;
+		os.alert({
+			type: 'error',
+			text: code === 'CANNOT_CHECK_SELF' ? i18n.ts._federationCheck.cannotCheckSelf : (err as { message?: string } | null)?.message ?? String(err),
+		});
+	} finally {
+		checking.value = false;
+	}
+}
+
 function refreshMetadata(): void {
 	if (!iAmModerator) return;
 	if (!instance.value) throw new Error('No instance?');
@@ -343,6 +409,10 @@ const headerTabs = computed(() => [{
 	key: 'users',
 	title: i18n.ts.users,
 	icon: 'ti ti-users',
+}, {
+	key: 'check',
+	title: i18n.ts._federationCheck.tab,
+	icon: 'ti ti-stethoscope',
 }] : []), {
 	key: 'raw',
 	title: 'Raw',
@@ -385,5 +455,41 @@ definePage(() => ({
 .signatureCaption {
 	font-size: 0.85em;
 	opacity: 0.7;
+}
+.checkCaption {
+	font-size: 0.9em;
+	opacity: 0.8;
+}
+.checkResult {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 10px 14px;
+	border-radius: var(--MI-radius);
+	background: var(--MI_THEME-panel);
+	border-left: solid 4px var(--MI_THEME-divider);
+
+	&.ok { border-left-color: var(--MI_THEME-success); }
+	&.warn { border-left-color: var(--MI_THEME-warn); }
+	&.fail { border-left-color: var(--MI_THEME-error); }
+}
+.checkHead {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	font-weight: bold;
+}
+.checkStatus {
+	flex-shrink: 0;
+	font-size: 0.85em;
+	opacity: 0.8;
+}
+.checkDetail {
+	font-size: 0.9em;
+	word-break: break-all;
+}
+.checkHint {
+	font-size: 0.85em;
+	opacity: 0.8;
 }
 </style>

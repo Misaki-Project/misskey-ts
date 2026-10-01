@@ -45,7 +45,7 @@ import { customEmojisMap } from '@/custom-emojis.js';
 import * as os from '@/os.js';
 import { misskeyApi, misskeyApiGet } from '@/utility/misskey-api.js';
 import { copyToClipboard } from '@/utility/copy-to-clipboard.js';
-import { importRemoteEmoji, hasLocalEmojiWithSameName } from '@/utility/import-remote-emoji.js';
+import { importRemoteEmoji, importRemoteEmojiAndReact, canImportRemoteEmoji, hasLocalEmojiWithSameName } from '@/utility/import-remote-emoji.js';
 import { requestRemoteEmojiImport } from '@/utility/request-remote-emoji.js';
 import { i18n } from '@/i18n.js';
 import MkCustomEmojiDetailedDialog from '@/components/MkCustomEmojiDetailedDialog.vue';
@@ -125,12 +125,29 @@ function onClick(ev: PointerEvent) {
 			});
 		}
 
-		if (props.menuReaction && react) {
+		// **ローカルの絵文字だけ。** リモートの絵文字を `:name:` で送ると、ローカルの
+		// 同名 (あれば) か ❤ に解決されて、押した絵文字とは別のものになる (#3187 で
+		// MkMfm がリモートにも menuReaction を渡すようになった)。
+		if (isLocal.value && props.menuReaction && react) {
 			menuItems.push({
 				text: i18n.ts.doReaction,
 				icon: 'ti ti-plus',
 				action: () => {
 					react(`:${props.name}:`);
+				},
+			});
+		}
+
+		// mk-go (#3187): 本文中のリモート絵文字に**同名のローカル絵文字があるなら**、
+		// それでリアクションする。リアクションのチップの相乗り (#2697) と同じ条件
+		// (設定 reactableRemoteReactionEnabled) で出す。送るのは `:name@.:`
+		// (`localAlternativeReaction` と同じ理由で、返ってくる myReaction と揃える)。
+		if (!isLocal.value && props.menuReaction && react && prefer.s.reactableRemoteReactionEnabled && hasLocalEmojiWithSameName(customEmojiName.value)) {
+			menuItems.push({
+				text: i18n.ts.doReaction,
+				icon: 'ti ti-plus',
+				action: () => {
+					react(`:${customEmojiName.value}@.:`);
 				},
 			});
 		}
@@ -165,7 +182,7 @@ function onClick(ev: PointerEvent) {
 		// 同名が無い / ログイン済み) は同じで、**押した先が違うだけ**。権限で
 		// 導線ごと消すと、欲しい絵文字を見つけても頼む手段が無い。
 		if (!isLocal.value && !hasLocalEmojiWithSameName(customEmojiName.value) && $i != null) {
-			const canImport = $i.isModerator || $i.policies.canManageCustomEmojis;
+			const canImport = canImportRemoteEmoji();
 			// policies は mk-go 独自キーを含むので型を外して読む。
 			const canRequest = ($i.policies as Record<string, unknown>).canRequestCustomEmojis === true;
 
@@ -182,6 +199,18 @@ function onClick(ev: PointerEvent) {
 						importRemoteEmoji(customEmojiName.value, props.host);
 					},
 				});
+				// 取り込んだ絵文字でそのままリアクションする (#3187)。リアクションできる
+				// 場所 (menuReaction と react の注入がある = ノートの本文と CW) でだけ出す。
+				// チャットの本文は投稿者を MkMfm に渡さないのでリモートの分岐に来ない。
+				if (props.menuReaction && react) {
+					menuItems.push({
+						text: i18n.ts._mkgoEmoji.importAndReact,
+						icon: 'ti ti-mood-plus',
+						action: () => {
+							importRemoteEmojiAndReact(customEmojiName.value, props.host, react);
+						},
+					});
+				}
 			} else if (canRequest) {
 				menuItems.push({
 					type: 'divider',

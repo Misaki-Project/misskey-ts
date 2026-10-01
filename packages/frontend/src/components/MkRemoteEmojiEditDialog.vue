@@ -130,8 +130,14 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-	// 必要なら戻り値を増やす
-	(ev: 'done'): void,
+	/**
+	 * Emitted after the import succeeded, with the name the emoji was saved
+	 * under.
+	 *
+	 * mk-go (#3187): 取り込み直後にその絵文字でリアクションするために要る。
+	 * **名前は直せる** (#2998) ので、呼び出し側が元の名前を使うと別の絵文字を指す。
+	 */
+	(ev: 'done', name: string): void,
 	(ev: 'closed'): void
 }>();
 
@@ -219,9 +225,11 @@ async function done() {
 		params.license = license.value;
 		params.isSensitive = isSensitive.value;
 	}
+	// 失敗すると apiWithDialog がエラーを出して reject するので、下の emit には届かない
+	// (= 呼び出し側はリアクションしない)。
 	await os.apiWithDialog('admin/emoji/copy' as never, params as never);
 
-	emit('done');
+	emit('done', needsRename.value ? nameInput.value : props.emoji.name);
 	windowEl.value?.close();
 }
 </script>

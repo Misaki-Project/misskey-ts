@@ -8,58 +8,39 @@ SPDX-License-Identifier: AGPL-3.0-only
 	<div class="_spacer" style="--MI_SPACER-w: 700px; --MI_SPACER-min: 16px; --MI_SPACER-max: 32px;">
 		<SearchMarker path="/admin/moderation" :label="i18n.ts.moderation" :keywords="['moderation']" icon="ti ti-shield" :inlining="['serverRules']">
 			<div class="_gaps_m">
-				<SearchMarker :keywords="['open', 'registration']">
-					<MkSwitch :modelValue="enableRegistration" @update:modelValue="onChange_enableRegistration">
-						<template #label><SearchLabel>{{ i18n.ts._serverSettings.openRegistration }}</SearchLabel></template>
-						<template #caption>
-							<div><SearchText>{{ i18n.ts._serverSettings.thisSettingWillAutomaticallyOffWhenModeratorsInactive }}</SearchText></div>
-							<div><i class="ti ti-alert-triangle" style="color: var(--MI_THEME-warn);"></i> <SearchText>{{ i18n.ts._serverSettings.openRegistrationWarning }}</SearchText></div>
-						</template>
-					</MkSwitch>
-				</SearchMarker>
-
 				<!--
-					mk-go: 承認制の登録 (#2554 / #2557)。アカウント作成を開けたまま、
-					申請と承認を必須にする。承認制それ自体がゲートなので、
-					disableRegistration と組み合わせる必要は無い。
+					mk-go: 登録の受け付け方を 4 択にする (#3186)。本家は「アカウント作成を
+					許可」のスイッチ 1 つで、mk-go は承認制 (#2557) と「受け付けない」を
+					足している。スイッチを重ねると組み合わせの整合 (#2565 / #2803) を
+					管理者に考えさせることになるので、選んだ受け付け方をそのまま送る。
 				-->
-				<MkSwitch
-					:modelValue="approvalRequiredForSignup"
-					@update:modelValue="onChange_approvalRequiredForSignup"
-				>
-					<template #label>登録を承認制にする</template>
-					<template #caption>
-						<div>申請フォームに答えてもらい、承認した相手だけが登録できます。</div>
-						<!--
-							招待制と重ねると**登録手段がゼロになる** — 承認制の入口は
-							disableRegistration が有効なら 503 になり、/api/signup は
-							承認制が有効なら招待コードを見る前に 403 を返す。だから
-							有効にする更新では同じ更新でアカウント作成も開放する (#2565)。
-							メール必須との排他は #2571 で撤去した (承認済みの登録も
-							確認メールの経路を通るようになったため)。
-						-->
-						<div v-if="emailRequiredForSignup">承認された相手には確認メールを送ります。</div>
-						<div v-if="!enableRegistration && !approvalRequiredForSignup">
-							有効にすると、アカウント作成も同時に開放されます。
-						</div>
-						<div v-else-if="approvalRequiredForSignup">
-							申請は<MkA to="/admin/signup-applications" class="_link">登録申請</MkA>で確認できます。
-						</div>
-						<!--
-							mk-go: 承認制を外すとゲートが 1 つも無くなるので、
-							アカウント作成を閉じるかどうかを確認する (#2803)。
-						-->
-						<div v-if="approvalRequiredForSignup && enableRegistration">
-							無効にすると、アカウント作成も閉じるかどうかを確認します。
-						</div>
-					</template>
-				</MkSwitch>
+				<!--
+					どれにも当てはまらない (null) ときは何も選ばれていない表示になる。
+					**このコメントを SearchMarker の中の先頭に置かない。** 本番ビルドでは
+					コメントが AST から落ち、検索索引のプラグインが「最初の子の直前の >」を
+					開始タグの終わりとみなすので、コメントの閉じ記号の中に属性を書き込んでビルドが壊れる。
+				-->
+				<SearchMarker :keywords="['open', 'registration', 'invite', 'approval', 'closed']">
+					<MkRadios :modelValue="registrationMode as RegistrationMode" :options="registrationModeDef" vertical @update:modelValue="onChange_registrationMode">
+						<template #label><SearchLabel>{{ i18n.ts._mkgoRegistration.mode }}</SearchLabel></template>
+						<template #caption>
+							<div v-if="registrationMode == null"><i class="ti ti-alert-triangle" style="color: var(--MI_THEME-warn);"></i> {{ i18n.ts._mkgoRegistration.inconsistent }}</div>
+							<div v-if="registrationMode === 'open'"><SearchText>{{ i18n.ts._serverSettings.thisSettingWillAutomaticallyOffWhenModeratorsInactive }}</SearchText></div>
+							<div v-if="registrationMode === 'open'"><i class="ti ti-alert-triangle" style="color: var(--MI_THEME-warn);"></i> <SearchText>{{ i18n.ts._serverSettings.openRegistrationWarning }}</SearchText></div>
+							<template v-if="registrationMode === 'approval'">
+								<div v-if="emailRequiredForSignup">{{ i18n.ts._mkgoRegistration.approvalEmailNote }}</div>
+								<div><MkA to="/admin/signup-applications" class="_link">{{ i18n.ts._mkgoRegistration.approvalListNote }}</MkA></div>
+							</template>
+						</template>
+					</MkRadios>
+				</SearchMarker>
 
 				<!--
 					mk-go: 申請フォームの項目 (#2570)。fediverse アカウントの欄など、
 					聞きたいことを管理者が決める。**検証はしない** — 単なる自由記述。
 				-->
-				<MkFolder v-if="approvalRequiredForSignup" :defaultOpen="false">
+				<!-- 閉じている間も承認制の値は残るので、再開前に項目を直せるようにする。 -->
+				<MkFolder v-if="approvalEnabled" :defaultOpen="false">
 					<template #icon><i class="ti ti-forms"></i></template>
 					<template #label>申請フォームの項目</template>
 					<template #suffix>{{ signupApplicationForm.length }} 項目</template>
@@ -100,7 +81,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<SearchMarker :keywords="['email', 'required', 'signup']">
 					<MkSwitch v-model="emailRequiredForSignup" @change="onChange_emailRequiredForSignup">
 						<template #label><SearchLabel>{{ i18n.ts.emailRequiredForSignup }}</SearchLabel> ({{ i18n.ts.recommended }})</template>
-						<template v-if="approvalRequiredForSignup" #caption>
+						<template v-if="registrationMode === 'approval'" #caption>
 							承認済みの登録にも確認メールを挟みます (#2571)。
 						</template>
 					</MkSwitch>
@@ -267,13 +248,33 @@ import MkButton from '@/components/MkButton.vue';
 import FormLink from '@/components/form/link.vue';
 import MkFolder from '@/components/MkFolder.vue';
 import MkSelect from '@/components/MkSelect.vue';
+import MkRadios from '@/components/MkRadios.vue';
+import type { MkRadiosOption } from '@/components/MkRadios.vue';
+import { registrationModeOf, registrationModePatch } from '@/utility/registration-mode.js';
+import type { RegistrationMode } from '@/utility/registration-mode.js';
 import { MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH } from '@/utility/local-username.js';
 
 const meta = await misskeyApi('admin/meta');
 
-const enableRegistration = ref(!meta.disableRegistration);
-const approvalRequiredForSignup = ref(
-	(meta as unknown as Record<string, unknown>).approvalRequiredForSignup === true);
+// mk-go 独自の meta なので misskey-js の型集合には無い (#2557 / #3186)。
+const mkgoMeta = meta as unknown as Record<string, unknown>;
+
+const registrationMode = ref<RegistrationMode | null>(registrationModeOf({
+	closed: mkgoMeta.registrationClosed === true,
+	approval: mkgoMeta.approvalRequiredForSignup === true,
+	disableRegistration: meta.disableRegistration,
+}));
+
+// 承認制の値そのもの。「受け付けない」の間も残る (再開後に戻る) ので、申請フォームの
+// 項目はこちらで出し分ける。
+const approvalEnabled = ref(mkgoMeta.approvalRequiredForSignup === true);
+
+const registrationModeDef = [
+	{ value: 'open', label: i18n.ts._mkgoRegistration.open, caption: i18n.ts._mkgoRegistration.openCaption },
+	{ value: 'invite', label: i18n.ts._mkgoRegistration.invite, caption: i18n.ts._mkgoRegistration.inviteCaption },
+	{ value: 'approval', label: i18n.ts._mkgoRegistration.approval, caption: i18n.ts._mkgoRegistration.approvalCaption },
+	{ value: 'closed', label: i18n.ts._mkgoRegistration.closed, caption: i18n.ts._mkgoRegistration.closedCaption },
+] as const satisfies MkRadiosOption<RegistrationMode>[];
 
 // mk-go: 申請フォームの項目 (#2570)。上限はサーバー側 (ValidateForm) と揃える。
 type SignupFormField = { label: string; type: 'text' | 'textarea'; required: boolean };
@@ -332,101 +333,39 @@ const blockedHosts = ref(meta.blockedHosts.join('\n'));
 const silencedHosts = ref(meta.silencedHosts?.join('\n') ?? '');
 const mediaSilencedHosts = ref(meta.mediaSilencedHosts.join('\n'));
 
-async function onChange_enableRegistration(value: boolean) {
-	if (value) {
+async function onChange_registrationMode(value: RegistrationMode) {
+	if (value === registrationMode.value) return;
+	if (value === 'open') {
 		const { canceled } = await os.confirm({
 			type: 'warning',
 			text: i18n.ts.acknowledgeNotesAndEnable,
 		});
 		if (canceled) return;
-	}
-
-	enableRegistration.value = value;
-
-	// 承認制は登録開放が前提なので、閉じるときは同じ更新で一緒に落とす (#2565)。
-	// **別々に送ると、サーバー側の検証に弾かれて「承認制を切らないと閉じられない」
-	// 詰みになる。**
-	const patch: Record<string, unknown> = { disableRegistration: !value };
-	if (!value && approvalRequiredForSignup.value) {
-		patch.approvalRequiredForSignup = false;
-		approvalRequiredForSignup.value = false;
-	}
-
-	os.apiWithDialog('admin/update-meta', patch as never).then(() => {
-		fetchInstance(true);
-	});
-}
-
-// mk-go 独自の meta なので misskey-js の型集合には無い (#2557)。
-async function onChange_approvalRequiredForSignup(value: boolean) {
-	const patch: Record<string, unknown> = { approvalRequiredForSignup: value };
-
-	if (value) {
-		// 承認制を入れるときはアカウント作成の開放も同じ更新で送る (#2565)。
-		// **「先に開放してから承認制を入れる」順にすると、その間に素通しで登録
-		// される窓ができる。** 承認制それ自体がゲートなので、開放は表示上の整合
-		// (訪問者に「招待制」と出さない) のため。
-		if (!enableRegistration.value) {
-			patch.disableRegistration = false;
-		}
-	} else if (enableRegistration.value) {
-		// 承認制を外すとゲートが 1 つも無くなる (#2803)。承認制で開いた登録が
-		// そのまま残ると、誰でも登録できる状態が無警告で残る (アカウント作成の
-		// トグル自体を入れるときは注意喚起を挟むのに、こちらは素通りしていた)。
-		//
-		// **どちらを選んだかを必ず明示して送る。** 省略するとサーバー側が閉じる
-		// 側の既定を補うので (#2803)、「開けたままにする」が選べなくなる。
-		//
-		// 本文で結果を断定しない。primary は「閉じる」なので、断定すると直後の
-		// ボタンが本文を打ち消す形になる。openRegistrationWarning はスイッチを
-		// オンにする側の文面 (「…場合のみオンにすることを推奨します」) なので、
-		// ここでは流用せず条件付きで書く。
-		const { canceled, result } = await os.actions({
+	} else if (value === 'closed') {
+		const { canceled } = await os.confirm({
 			type: 'warning',
-			title: '承認制を解除しますか？',
-			text: '解除すると申請と承認のゲートが無くなります。アカウント作成を開けたままにすると、誰でも登録できる状態になります。',
-			actions: [
-				{ value: 'close', text: 'アカウント作成も閉じる', primary: true },
-				{ value: 'keep', text: 'アカウント作成は開けたままにする', danger: true },
-				{ value: 'cancel', text: 'やめる' },
-			],
+			text: i18n.ts._mkgoRegistration.closeConfirm,
 		});
-		if (canceled || result === 'cancel') return;
-		patch.disableRegistration = result === 'close';
-	} else {
-		// 元から閉じているなら開く余地が無いので聞かない。それでも明示して送る
-		// (要求だけを見れば結果が決まる形にしておく)。
-		patch.disableRegistration = true;
+		if (canceled) return;
 	}
 
-	// enableRegistration はページを開いた時点の meta から作った ref で、以後
-	// 同期されない。**OFF 側は必ず disableRegistration を送るようになったので、
-	// 開いている間に他の管理者が登録を閉じ / 開きしていると、その値を上書きする。**
-	// 選択は管理者自身がダイアログで明示したものなので黙って倒れるわけではないが、
-	// 判断材料が古くなりうる点は変わらない。
-
-	const prevApproval = approvalRequiredForSignup.value;
-	const prevRegistration = enableRegistration.value;
-	approvalRequiredForSignup.value = value;
-	if (typeof patch.disableRegistration === 'boolean') {
-		enableRegistration.value = !patch.disableRegistration;
-	}
-
-	// **失敗したら表示を戻す (#2803)。** 楽観更新のまま放置すると、「閉じる」を
-	// 選んで失敗したときに画面だけ招待制になり、実際には申請を受け付け続けている
-	// のに管理者は止めたと読む。update-meta は保存に成功したら必ず 204 なので、
-	// reject = 未保存として戻してよい。
+	// **失敗したら表示を戻す。** 楽観更新のまま放置すると、画面だけ「受け付けない」に
+	// なって実際には受け付け続けているのに、管理者は止めたと読む。update-meta は保存に
+	// 成功したら必ず 204 なので、reject = 未保存として戻してよい。
 	//
-	// エラーの提示は apiWithDialog が担う。ただし通信断のように `err.code` が
-	// 無い失敗ではその中の分岐が先に落ちてダイアログが出ない (upstream 由来。
-	// ここでは直さない)。その場合もスイッチは実状態へ戻る。
+	// エラーの提示は apiWithDialog が担う。ただし通信断のように `err.code` が無い
+	// 失敗ではその中の分岐が先に落ちてダイアログが出ない (upstream 由来)。その場合も
+	// 表示は実状態へ戻る。
+	const prev = registrationMode.value;
+	registrationMode.value = value;
 	try {
-		await os.apiWithDialog('admin/update-meta', patch as never);
+		await os.apiWithDialog('admin/update-meta', registrationModePatch[value] as never);
 	} catch {
-		approvalRequiredForSignup.value = prevApproval;
-		enableRegistration.value = prevRegistration;
+		registrationMode.value = prev;
 		return;
 	}
+	const approval = registrationModePatch[value].approvalRequiredForSignup;
+	if (approval != null) approvalEnabled.value = approval;
 	fetchInstance(true);
 }
 

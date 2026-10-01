@@ -10,6 +10,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 	</div>
 	<div v-else class="_spacer" style="--MI_SPACER-w: 800px;">
 		<div class="_gaps_m" style="text-align: center;">
+			<!-- mk-go: 受け付けていない間も発行はできる (再開後に配る分を先に作れる)。使えないことだけ伝える (#3186)。 -->
+			<MkInfo v-if="registrationClosed" warn style="text-align: start;">{{ i18n.ts._mkgoRegistration.inviteUnusableWhileClosed }}</MkInfo>
 			<div v-if="resetCycle && inviteLimit">{{ i18n.tsx.inviteLimitResetCycle({ time: resetCycle, limit: inviteLimit }) }}</div>
 			<MkButton inline primary rounded :disabled="currentInviteLimit !== null && currentInviteLimit <= 0" @click="create"><i class="ti ti-user-plus"></i> {{ i18n.ts.createInviteCode }}</MkButton>
 			<div v-if="currentInviteLimit !== null">{{ i18n.tsx.createLimitRemaining({ limit: currentInviteLimit }) }}</div>
@@ -38,7 +40,11 @@ import MkInviteCode from '@/components/MkInviteCode.vue';
 import { definePage } from '@/page.js';
 import { instance } from '@/instance.js';
 import { $i } from '@/i.js';
+import MkInfo from '@/components/MkInfo.vue';
+import { isRegistrationClosed } from '@/utility/registration-mode.js';
 import { Paginator } from '@/utility/paginator.js';
+
+const registrationClosed = isRegistrationClosed();
 
 const currentInviteLimit = ref<null | number>(null);
 const inviteLimit = (($i != null && $i.policies.inviteLimit) || (($i == null && instance.policies.inviteLimit))) as number;

@@ -3094,6 +3094,10 @@ _abuseReport:
     deleteConfirm: "Are you sure that you want to delete the notification recipient?"
 _moderationLogTypes:
   resetEmojiApplicationQuota: "Emoji request quota reset"
+  cleanGoneInstance: "Cleaned up follows with a gone server"
+  createFederationRule: "Federation rule created"
+  updateFederationRule: "Federation rule updated"
+  deleteFederationRule: "Federation rule deleted"
   clearQueue: "Clear queue"
   promoteQueue: "Promote queue"
   createRole: "Role created"

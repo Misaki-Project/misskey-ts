@@ -33,7 +33,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 		<div v-if="narrow && !isRoot" :class="$style.header">
 			<img :src="instance.iconUrl || '/favicon.ico'" alt="" :class="$style.headerIcon"/>
 			<MkA to="/" :class="$style.headerTitle">{{ instanceName }}</MkA>
-			<MkButton primary rounded :class="$style.headerButton" @click="goHome">{{ i18n.ts.signup }}</MkButton>
+			<!-- mk-go: 受け付けていない間は出さない (#3186)。押すと入口へ戻るだけになる。 -->
+			<MkButton v-if="!registrationClosed" primary rounded :class="$style.headerButton" @click="goHome">{{ i18n.ts.signup }}</MkButton>
 		</div>
 		<div :class="$style.content">
 			<RouterView/>
@@ -56,8 +57,10 @@ import MkVisitorDashboard from '@/components/MkVisitorDashboard.vue';
 import { mainRouter } from '@/router.js';
 import { DI } from '@/di.js';
 import MkButton from '@/components/MkButton.vue';
+import { isRegistrationClosed } from '@/utility/registration-mode.js';
 
 const isRoot = computed(() => mainRouter.currentRoute.value.name === 'index');
+const registrationClosed = isRegistrationClosed();
 
 const DESKTOP_THRESHOLD = 1100;
 

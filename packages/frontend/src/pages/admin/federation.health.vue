@@ -37,6 +37,31 @@ SPDX-License-Identifier: AGPL-3.0-only
 		-->
 		<MkInfo v-if="evictedHosts > 0" warn>{{ i18n.tsx._federationHealth.evicted({ n: number(evictedHosts) }) }}</MkInfo>
 
+		<!--
+			mk-go: 配送を止めている相手 (#3048)。**「開いたまま戻らない」が最悪の
+			失敗形**なので、見えて手で再開できるようにする。受信側には無い。
+		-->
+		<div v-if="direction === 'deliver' && breakers.length > 0" class="_gaps_s">
+			<div :class="$style.breakersHead">{{ i18n.ts._federationHealth.breakersTitle }}</div>
+			<div v-for="b in breakers" :key="b.host" :class="[$style.breaker, b.open ? $style.error : $style.warn]">
+				<div :class="$style.breakerHead">
+					<span class="_monospace">{{ b.host }}</span>
+					<span :class="$style.breakerState">{{ stateLabel(b) }}</span>
+				</div>
+				<div :class="$style.breakerBody">
+					<template v-if="b.open">
+						<div v-if="b.openedAt">{{ i18n.ts._federationHealth.breakerOpenedAt }}: <MkTime :time="b.openedAt"/></div>
+						<div v-if="b.nextProbeAt">{{ i18n.ts._federationHealth.breakerNextProbe }}: <MkTime :time="b.nextProbeAt" mode="absolute"/></div>
+						<div>{{ i18n.tsx._federationHealth.breakerDetail({ failures: number(b.consecutiveFailures), interval: intervalLabel(b.probeIntervalSeconds) }) }}</div>
+					</template>
+					<div v-if="b.throttledUntil">{{ i18n.ts._federationHealth.breakerThrottledUntil }}: <MkTime :time="b.throttledUntil" mode="absolute"/></div>
+					<div v-if="b.reservedUntil">{{ i18n.ts._federationHealth.breakerReservedUntil }}: <MkTime :time="b.reservedUntil" mode="absolute"/></div>
+				</div>
+				<MkButton small :disabled="closing === b.host" @click="closeBreaker(b.host)"><i class="ti ti-player-play"></i> {{ i18n.ts._federationHealth.breakerClose }}</MkButton>
+			</div>
+			<div :class="$style.hint">{{ i18n.ts._federationHealth.breakersNote }}</div>
+		</div>
+
 		<div>
 			<MkInput v-model="hostQuery" :debounce="true">
 				<template #prefix><i class="ti ti-search"></i></template>
@@ -132,6 +157,8 @@ import MkFolder from '@/components/MkFolder.vue';
 import MkInfo from '@/components/MkInfo.vue';
 import MkLoading from '@/components/global/MkLoading.vue';
 import MkTime from '@/components/global/MkTime.vue';
+import MkButton from '@/components/MkButton.vue';
+import * as os from '@/os.js';
 import FormSplit from '@/components/form/split.vue';
 import { i18n } from '@/i18n.js';
 import { misskeyApi } from '@/utility/misskey-api.js';
@@ -185,10 +212,27 @@ type HostHealth = {
 	};
 };
 
+// mk-go: 配送を止めている相手 (#3048)。internal/core/deliveryhealth/breaker.go の
+// BreakerState。
+type BreakerState = {
+	host: string;
+	// 開いている (配送を止めている) か。false なら 429 で間隔を空けているか、待たせた分を送っているだけ。
+	open: boolean;
+	consecutiveFailures: number;
+	openedAt: string | null;
+	nextProbeAt: string | null;
+	probeIntervalSeconds: number;
+	throttledUntil: string | null;
+	// 429 で待たせた配送の最後の予約時刻 (送り終わる見込み)。
+	reservedUntil: string | null;
+};
+
 type HealthResponse = {
 	windowSeconds: number;
 	hosts: HostHealth[];
 	evictedHosts: number;
+	// 古い backend (#3048 より前) と受信側には無いか空。
+	breakers?: BreakerState[];
 };
 
 const props = defineProps<{
@@ -201,6 +245,8 @@ const hostQuery = defineModel<string>('host', { default: '' });
 
 const hosts = ref<HostHealth[]>([]);
 const evictedHosts = ref(0);
+const breakers = ref<BreakerState[]>([]);
+const closing = ref<string | null>(null);
 const fetching = ref(true);
 const unavailable = ref(false);
 
@@ -309,13 +355,46 @@ async function fetchHealth() {
 		const res = await misskeyApi(endpoint as never, { windowSeconds: windowSeconds.value } as never) as unknown as HealthResponse;
 		hosts.value = res.hosts ?? [];
 		evictedHosts.value = res.evictedHosts ?? 0;
+		breakers.value = res.breakers ?? [];
 		unavailable.value = false;
 	} catch {
 		hosts.value = [];
 		evictedHosts.value = 0;
+		breakers.value = [];
 		unavailable.value = true;
 	} finally {
 		fetching.value = false;
+	}
+}
+
+// 秒数を「1分」「2時間」のように出す。間隔は 1 分から 1 時間 (倍々) なので、
+// 分と時間で足りる。
+function intervalLabel(sec: number): string {
+	if (sec >= 3600 && sec % 3600 === 0) return i18n.tsx._federationHealth.hours({ n: number(sec / 3600) });
+	return i18n.tsx._federationHealth.minutes({ n: number(Math.max(1, Math.round(sec / 60))) });
+}
+
+function stateLabel(b: BreakerState): string {
+	if (b.open) return i18n.ts._federationHealth.breakerOpen;
+	if (b.throttledUntil) return i18n.ts._federationHealth.breakerThrottled;
+	return i18n.ts._federationHealth.breakerDraining;
+}
+
+// 閉じると、待たせていたジョブは数分以内に送られる (待たせる時間は最大 5 分で
+// 区切ってある)。429 の予約も消える。相手がまだ落ちていれば、また失敗を数えて止まり直すだけなので、
+// 確認は軽くてよい。
+async function closeBreaker(host: string) {
+	const { canceled } = await os.confirm({
+		type: 'question',
+		text: i18n.tsx._federationHealth.breakerCloseConfirm({ host }),
+	});
+	if (canceled) return;
+	closing.value = host;
+	try {
+		await os.apiWithDialog('admin/federation/close-delivery-breaker' as never, { host } as never);
+		await fetchHealth();
+	} finally {
+		closing.value = null;
 	}
 }
 
@@ -323,6 +402,39 @@ watch([windowSeconds, () => props.direction], fetchHealth, { immediate: true });
 </script>
 
 <style lang="scss" module>
+.breakersHead {
+	font-weight: bold;
+}
+
+.breaker {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 12px 14px;
+	border-radius: var(--MI-radius);
+	background: var(--MI_THEME-panel);
+	border-left: solid 4px var(--MI_THEME-warn);
+
+	&.error {
+		border-left-color: var(--MI_THEME-error);
+	}
+}
+
+.breakerHead {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.breakerState {
+	font-size: 0.85em;
+	opacity: 0.8;
+}
+
+.breakerBody {
+	font-size: 0.9em;
+}
+
 .summary {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);

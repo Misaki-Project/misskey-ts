@@ -13,6 +13,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 <PageWithHeader :actions="headerActions" :tabs="headerTabs">
 	<div class="_spacer" style="--MI_SPACER-w: 600px; --MI_SPACER-min: 16px; --MI_SPACER-max: 32px;">
 		<div class="_gaps_m">
+			<!-- mk-go: 受け付けていない間も状況の照会はできる (#3186)。申請と登録は止まる。 -->
+			<MkInfo v-if="registrationClosed" warn>{{ i18n.ts._mkgoRegistration.closedNotice }}</MkInfo>
 			<MkInfo v-if="fatal" warn>{{ fatal }}</MkInfo>
 
 			<!-- 申請直後: コードを 1 度だけ見せる -->
@@ -108,7 +110,12 @@ SPDX-License-Identifier: AGPL-3.0-only
 					</div>
 				</div>
 
-				<MkFolder :defaultOpen="true">
+				<!--
+					閉じている間は申請フォームを出さない (#3186)。出すとフォームの準備
+					(form-token) が REGISTRATION_CLOSED で失敗し、「準備に失敗しました」と
+					原因を取り違えた案内が並ぶ。状況の照会は下で続けられる。
+				-->
+				<MkFolder v-if="!registrationClosed" :defaultOpen="true">
 					<template #icon><i class="ti ti-send"></i></template>
 					<template #label>申請する</template>
 
@@ -181,6 +188,7 @@ import { i18n } from '@/i18n.js';
 import { instance } from '@/instance.js';
 import { login } from '@/accounts.js';
 import { resolveLocalUsernameState, resolveMinimumUsernameLength } from '@/utility/local-username.js';
+import { isRegistrationClosed } from '@/utility/registration-mode.js';
 
 type ApplicationStatus = 'pending' | 'approved' | 'rejected' | 'expired' | 'completed';
 
@@ -223,6 +231,7 @@ const confirmationSent = ref(false);
 const emailRequired = computed(() => instance.emailRequiredForSignup === true);
 const busy = ref(false);
 const fatal = ref<string | null>(null);
+const registrationClosed = isRegistrationClosed();
 const application = ref<ApplicationView | null>(null);
 // **有効な provider のトークンを全部送る (#3037 レビュー)。**
 //
@@ -287,7 +296,7 @@ async function fetchFormToken() {
 }
 
 onMounted(() => {
-	void fetchFormToken();
+	if (!registrationClosed) void fetchFormToken();
 	ticker = window.setInterval(() => { now.value = Date.now(); }, 500);
 });
 
@@ -370,6 +379,7 @@ function message(err: unknown): string {
 		case 'DENIED_USERNAME': return 'そのユーザー名は使えません。';
 		case 'EMAIL_UNAVAILABLE': return 'そのメールアドレスは使えません。';
 		case 'UNAVAILABLE': return 'このサーバーでは承認制の登録を受け付けていません。';
+		case 'REGISTRATION_CLOSED': return i18n.ts._mkgoRegistration.closedNotice;
 		case 'INVALID_USERNAME': return 'そのユーザー名は使えません。';
 		case 'USED_USERNAME': return 'そのユーザー名は既に使われています。';
 		case 'USERNAME_TOO_SHORT': return `ユーザー名は${minimumUsernameLength.value}文字以上にしてください。`;

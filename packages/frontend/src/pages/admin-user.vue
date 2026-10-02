@@ -111,16 +111,20 @@ SPDX-License-Identifier: AGPL-3.0-only
 						</div>
 					</MkFolder>
 
-					<MkFolder>
+					<MkFolder :key="props.userId" @opened="loadUserIps">
 						<template #icon><i class="ti ti-password"></i></template>
 						<template #label>IP</template>
 						<MkInfo v-if="!iAmAdmin" warn>{{ i18n.ts.requireAdminForView }}</MkInfo>
-						<MkInfo v-else>The date is the IP address was first acknowledged.</MkInfo>
-						<template v-if="iAmAdmin && ips">
-							<div v-for="record in ips" :key="record.ip" class="_monospace" :class="$style.ip" style="margin: 1em 0;">
-								<span class="date">{{ record.createdAt }}</span>
-								<span class="ip">{{ record.ip }}</span>
-							</div>
+						<template v-else>
+							<MkInfo>The date is the IP address was first acknowledged.</MkInfo>
+							<MkLoading v-if="ipLookup.status.value === 'loading'"/>
+							<MkError v-else-if="ipLookup.status.value === 'error'" @retry="retryUserIps"/>
+							<template v-else-if="ipLookup.status.value === 'loaded' && ips">
+								<div v-for="record in ips" :key="record.ip" class="_monospace" :class="$style.ip" style="margin: 1em 0;">
+									<span class="date">{{ record.createdAt }}</span>
+									<span class="ip">{{ record.ip }}</span>
+								</div>
+							</template>
 						</template>
 					</MkFolder>
 
@@ -264,11 +268,13 @@ import { definePage } from '@/page.js';
 import { i18n } from '@/i18n.js';
 import { useMkSelect } from '@/composables/use-mkselect.js';
 import { ensureSignin, iAmAdmin, iAmModerator } from '@/i.js';
+import { instance } from '@/instance.js';
 import XEmojiApplications from '@/pages/admin-user.emoji-applications.vue';
 import XRelatedAccounts from '@/pages/admin-user.related-accounts.vue';
 import MkRolePreview from '@/components/MkRolePreview.vue';
 import MkPagination from '@/components/MkPagination.vue';
 import { Paginator } from '@/utility/paginator.js';
+import { adminShowUserParams, createLazyUserIpLookup } from '@/utility/user-ip-lookup.js';
 
 const $i = ensureSignin();
 
@@ -278,6 +284,9 @@ const props = withDefaults(defineProps<{
 }>(), {
 	initialTab: 'overview',
 });
+
+const mkGoVersion = (instance as typeof instance & { mkGoVersion?: string }).mkGoVersion ?? null;
+const ipLookup = createLazyUserIpLookup(props.userId, userId => misskeyApi('admin/get-user-ips', { userId }));
 
 const result = await _fetch_();
 
@@ -293,7 +302,7 @@ const {
 });
 const user = ref(result.user);
 const info = ref(result.info);
-const ips = ref(result.ips);
+const ips = ipLookup.value;
 const ap = ref<Misskey.entities.ApGetResponse | null>(null);
 const moderator = ref(info.value.isModerator);
 const silenced = ref(info.value.isSilenced);
@@ -348,15 +357,20 @@ const expandedRoleIds = ref<(typeof info.value.roles[number]['id'])[]>([]);
 function _fetch_() {
 	return Promise.all([misskeyApi('users/show', {
 		userId: props.userId,
-	}), misskeyApi('admin/show-user', {
-		userId: props.userId,
-	}), iAmAdmin ? misskeyApi('admin/get-user-ips', {
-		userId: props.userId,
-	}) : Promise.resolve(null)]).then(([_user, _info, _ips]) => ({
+	}), misskeyApi('admin/show-user', adminShowUserParams(props.userId, mkGoVersion))]).then(([_user, _info]) => ({
 		user: _user,
 		info: _info,
-		ips: _ips,
 	}));
+}
+
+function loadUserIps(): void {
+	if (!iAmAdmin) return;
+	void ipLookup.load();
+}
+
+function retryUserIps(): void {
+	if (!iAmAdmin) return;
+	void ipLookup.retry();
 }
 
 watch(moderationNote, async () => {
@@ -368,7 +382,6 @@ async function refreshUser() {
 	const result = await _fetch_();
 	user.value = result.user;
 	info.value = result.info;
-	ips.value = result.ips;
 	moderator.value = info.value.isModerator;
 	silenced.value = info.value.isSilenced;
 	suspended.value = info.value.isSuspended;

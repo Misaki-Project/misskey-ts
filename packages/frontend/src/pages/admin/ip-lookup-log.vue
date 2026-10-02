@@ -4,46 +4,52 @@ SPDX-License-Identifier: AGPL-3.0-only
 -->
 
 <!--
-	mk-go: IP 照会の監査記録を読む画面 (#3106 / 親 #3066)。
+	mk-go: IP 照会の監査記録を読む画面 (#3106 / 親 #3066 / #3276)。
 
 	IP とアカウントの対応は機密性の高いモデレーション情報なので、**照会そのものを
 	記録する**。ここはそれを読む側。
 
 	**この画面自体が機密。** 照会に使った IP がそのまま並ぶので、照会と同じ 3 段の
 	権限 (moderator + canSearchIpHistory + read:admin:user-ips) で守られている。
+	コンポーネントは権限を確認したモデレーションログのタブからだけ mount するが、
+	権限と API scope の最終判定はサーバー側で行う。
 
 	**記録されるのは照会の事実だけで、結果は残っていない。** 「何件返したか」は
 	あるが「誰が候補に出たか」は無い — 記録すると、この表が第 2 の「IP とアカウント
 	の対応」になるため。
 -->
 <template>
-<PageWithHeader>
-	<div class="_spacer" style="--MI_SPACER-w: 800px; --MI_SPACER-min: 16px; --MI_SPACER-max: 32px;">
-		<div class="_gaps_m">
-			<MkInfo>{{ i18n.ts._mkgoIpLookupLog.about }}</MkInfo>
+<div class="_gaps_m">
+	<MkInfo>{{ i18n.ts._mkgoIpLookupLog.about }}</MkInfo>
 
-			<div :class="$style.status" aria-live="polite">{{ status }}</div>
+	<div :class="$style.status" aria-live="polite">{{ status }}</div>
+	<MkInfo v-if="error && !errorWhilePaging" warn>{{ error }}</MkInfo>
+	<div v-if="loading" :class="$style.placeholder"><MkLoading/></div>
 
-			<MkInfo v-if="error && !errorWhilePaging" warn>{{ error }}</MkInfo>
+	<template v-else-if="result">
+		<!--
+			**保持期間はサーバーが教える。** 画面で決め打ちすると、サーバーが
+			変えたときに黙って嘘になる。
+		-->
+		<MkInfo>{{ i18n.tsx._mkgoIpLookupLog.retentionNote({ n: result.retentionDays }) }}</MkInfo>
+		<!--
+			**「照会されていない」とは書かない。** 記録が空でも、保持期間を
+			過ぎて消えたのか一度も引かれていないのかは、この応答からは
+			区別できない (#2792 と同じ形の言い過ぎを避ける)。
+		-->
+		<MkInfo v-if="entries.length === 0">{{ i18n.tsx._mkgoIpLookupLog.empty({ n: result.retentionDays }) }}</MkInfo>
 
-			<div v-if="loading" :class="$style.placeholder"><MkLoading/></div>
+		<div v-else class="_gaps_s">
+			<MkTl :events="timeline" groupBy="d">
+				<template #left="{ event }">
+					<MkAvatar v-if="event.user" :user="event.user" style="width: 26px; height: 26px;"/>
+					<i v-else class="ti ti-user-off"></i>
+				</template>
+				<template #right="{ event: e }">
+					<MkFolder :key="e.id">
+						<template #label>{{ kindLabel(e.kind) }}</template>
+						<template #caption><MkTime :time="e.createdAt" mode="detail"/></template>
 
-			<template v-else-if="result">
-				<!--
-					**保持期間はサーバーが教える。** 画面で決め打ちすると、サーバーが
-					変えたときに黙って嘘になる。
-				-->
-				<MkInfo>{{ i18n.tsx._mkgoIpLookupLog.retentionNote({ n: result.retentionDays }) }}</MkInfo>
-
-				<!--
-					**「照会されていない」とは書かない。** 記録が空でも、保持期間を
-					過ぎて消えたのか一度も引かれていないのかは、この応答からは
-					区別できない (#2792 と同じ形の言い過ぎを避ける)。
-				-->
-				<MkInfo v-if="entries.length === 0">{{ i18n.tsx._mkgoIpLookupLog.empty({ n: result.retentionDays }) }}</MkInfo>
-
-				<div v-else class="_gaps_s">
-					<div v-for="e in entries" :key="e.id" :class="$style.row">
 						<!--
 							**照会した人を引けないことがある。** `ip_lookup_log.userId`
 							に FK は無いので、退会しても記録は残る (監査の目的からして
@@ -97,28 +103,29 @@ SPDX-License-Identifier: AGPL-3.0-only
 								<template #value>{{ i18n.tsx._mkgoIpLookupLog.resultCountValue({ n: number(e.resultCount) }) }}</template>
 							</MkKeyValue>
 						</div>
-					</div>
-					<div :class="$style.caption">{{ i18n.ts._mkgoIpLookupLog.resultsNotRecorded }}</div>
-				</div>
-
-				<MkInfo v-if="error && errorWhilePaging" warn>{{ error }}</MkInfo>
-				<MkButton v-if="result.hasMore" :disabled="loadingMore" @click="loadMore()">{{ i18n.ts.loadMore }}</MkButton>
-			</template>
+					</MkFolder>
+				</template>
+			</MkTl>
+			<div :class="$style.caption">{{ i18n.ts._mkgoIpLookupLog.resultsNotRecorded }}</div>
 		</div>
-	</div>
-</PageWithHeader>
+
+		<MkInfo v-if="error && errorWhilePaging" warn>{{ error }}</MkInfo>
+		<MkButton v-if="result.hasMore" :disabled="loadingMore" @click="loadMore()">{{ i18n.ts.loadMore }}</MkButton>
+	</template>
+</div>
 </template>
 
 <script lang="ts" setup>
 import { computed, onMounted, ref } from 'vue';
 import type * as Misskey from 'misskey-js';
 import MkButton from '@/components/MkButton.vue';
+import MkFolder from '@/components/MkFolder.vue';
 import MkInfo from '@/components/MkInfo.vue';
 import MkKeyValue from '@/components/MkKeyValue.vue';
+import MkTl from '@/components/MkTl.vue';
 import MkUserCardMini from '@/components/MkUserCardMini.vue';
 import { i18n } from '@/i18n.js';
 import number from '@/filters/number.js';
-import { definePage } from '@/page.js';
 import { misskeyApi } from '@/utility/misskey-api.js';
 import { ipSearchErrorKind } from '@/utility/ip-search-result.js';
 
@@ -156,6 +163,11 @@ const error = ref<string | null>(null);
 const errorWhilePaging = ref(false);
 const result = ref<IPLookupLogResponse | null>(null);
 const entries = ref<IPLookupLogEntry[]>([]);
+const timeline = computed(() => entries.value.map(e => ({
+	id: e.id,
+	timestamp: new Date(e.createdAt).getTime(),
+	data: e,
+})));
 
 // **世代で古い応答を捨てる。** 「さらに表示」の最中でも再読み込みは掛けられるので、
 // 捨てないと別の取得の offset を継ぎ足して以降の記録が出てこなくなる。
@@ -245,29 +257,12 @@ function loadMore() {
 }
 
 onMounted(() => load(0));
-
-definePage(() => ({
-	title: i18n.ts._mkgoIpLookupLog.title,
-	icon: 'ti ti-file-search',
-}));
 </script>
 
 <style lang="scss" module>
 .placeholder {
 	padding: 32px;
 	text-align: center;
-}
-
-/*
-	背景を敷かない (中の MkUserCardMini が自前で panel 色を持つ)。区切りは `+` で
-	入れる — この div の最後の子は注釈なので `:last-child` では末尾の行を指せない。
-*/
-.row {
-	padding: 12px 0;
-}
-
-.row + .row {
-	border-top: solid 0.5px var(--MI_THEME-divider);
 }
 
 /* 読み上げ専用。見た目には出さないが display:none にすると読まれない。 */

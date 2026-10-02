@@ -14458,6 +14458,22 @@ export interface Locale extends ILocale {
          */
         "canSearchIpHistory_caption": string;
         /**
+         * 自分のアカウントを削除できる
+         */
+        "canDeleteAccount": string;
+        /**
+         * 本人によるアカウント削除を許可します。管理者が他のアカウントを削除する操作には影響しません。
+         */
+        "canDeleteAccount_caption": string;
+        /**
+         * 自分のアカウントを完全に削除できる
+         */
+        "canPurgeAccount": string;
+        /**
+         * 本人がアカウントを削除したとき、user レコードとプロフィールを物理的に削除します。無効にすると、それらは匿名化や消去をせずに残るため、利用者を特定できる状態が保持されます。管理者が他のアカウントを削除する操作には影響しません。
+         */
+        "canPurgeAccount_caption": string;
+        /**
          * カスタム絵文字をアイコンに重ねられる
          */
         "canUseEmojiAsAvatarDecoration": string;

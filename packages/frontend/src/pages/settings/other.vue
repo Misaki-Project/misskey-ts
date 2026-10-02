@@ -69,8 +69,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 				</MkFolder>
 			</SearchMarker>
 
-			<SearchMarker v-if="isAccountDeletionAllowed($i.policies)" :keywords="['account', 'close', 'delete']">
-				<MkFolder>
+			<SearchMarker :keywords="['account', 'close', 'delete']">
+				<MkFolder v-if="shouldShowAccountDeletionSection($i.policies, $i.isDeleted)">
 					<template #icon><SearchIcon><i class="ti ti-alert-triangle"></i></SearchIcon></template>
 					<template #label><SearchLabel>{{ i18n.ts.closeAccount }}</SearchLabel></template>
 
@@ -180,7 +180,7 @@ import { signout } from '@/signout.js';
 import { hideAllTips as _hideAllTips, resetAllTips as _resetAllTips } from '@/tips.js';
 import { suggestReload } from '@/utility/reload-suggest.js';
 import { cloudBackup } from '@/preferences/utility.js';
-import { isAccountDeletionAllowed } from '@/utility/account-delete-policy.js';
+import { shouldShowAccountDeletionSection } from '@/utility/account-delete-policy.js';
 
 const $i = ensureSignin();
 

@@ -108,6 +108,7 @@ import XPolicyEditor from './roles.policy-editor.vue';
 import { i18n } from '@/i18n.js';
 import { instance } from '@/instance.js';
 import { deepClone } from '@/utility/clone.js';
+import { accountDeletionPolicyKeys, ensureAccountDeletionRolePolicies } from '@/utility/account-delete-policy.js';
 import type { PolicyMeta } from './roles.policy-editor.vue';
 
 type RoleLike = Pick<Misskey.entities.Role, 'name' | 'description' | 'isAdministrator' | 'isModerator' | 'color' | 'iconUrl' | 'target' | 'isPublic' | 'isExplorable' | 'asBadge' | 'canEditMembersByModerator' | 'displayOrder' | 'preserveAssignmentOnMoveAccount'> & {
@@ -142,8 +143,7 @@ const mkGoRolePolicyKeys: string[] = [
 	'canRequestCustomEmojis',
 	'canUseEmojiAsAvatarDecoration',
 	'canSearchIpHistory',
-	'canDeleteAccount',
-	'canPurgeAccount',
+	...accountDeletionPolicyKeys,
 	'canUseChunkedUpload',
 	'chunkedUploadMaxConcurrentSessions',
 	'chunkedUploadMaxPendingMb',
@@ -155,6 +155,7 @@ const mkGoRolePolicyKeys: string[] = [
 
 const role = ref((() => {
 	const base = deepClone(props.modelValue);
+	ensureAccountDeletionRolePolicies(base.policies, instance.policies);
 	// fill missing policy
 	for (const ROLE_POLICY of mkGoRolePolicyKeys) {
 		if (base.policies[ROLE_POLICY] == null) {

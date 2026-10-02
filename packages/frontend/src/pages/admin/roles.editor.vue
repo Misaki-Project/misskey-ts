@@ -108,7 +108,7 @@ import XPolicyEditor from './roles.policy-editor.vue';
 import { i18n } from '@/i18n.js';
 import { instance } from '@/instance.js';
 import { deepClone } from '@/utility/clone.js';
-import { accountDeletionPolicyKeys, ensureAccountDeletionRolePolicies } from '@/utility/account-delete-policy.js';
+import { ensureAccountDeletionRolePolicies } from '@/utility/account-delete-policy.js';
 import type { PolicyMeta } from './roles.policy-editor.vue';
 
 type RoleLike = Pick<Misskey.entities.Role, 'name' | 'description' | 'isAdministrator' | 'isModerator' | 'color' | 'iconUrl' | 'target' | 'isPublic' | 'isExplorable' | 'asBadge' | 'canEditMembersByModerator' | 'displayOrder' | 'preserveAssignmentOnMoveAccount'> & {
@@ -143,7 +143,8 @@ const mkGoRolePolicyKeys: string[] = [
 	'canRequestCustomEmojis',
 	'canUseEmojiAsAvatarDecoration',
 	'canSearchIpHistory',
-	...accountDeletionPolicyKeys,
+	'canDeleteAccount',
+	'canPurgeAccount',
 	'canUseChunkedUpload',
 	'chunkedUploadMaxConcurrentSessions',
 	'chunkedUploadMaxPendingMb',

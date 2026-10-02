@@ -613,7 +613,7 @@ import MkRange from '@/components/MkRange.vue';
 import MkSwitch from '@/components/MkSwitch.vue';
 import MkSelect from '@/components/MkSelect.vue';
 import MkInfo from '@/components/MkInfo.vue';
-import { accountDeletionPolicyDefaults, accountDeletionPolicyKeys } from '@/utility/account-delete-policy.js';
+import { accountDeletionPolicyDefaults } from '@/utility/account-delete-policy.js';
 
 /**
  * Notification types the opt-out policy can target (#2898).
@@ -663,7 +663,8 @@ const mkGoPolicyMetaKeys: string[] = [
 	'canRequestCustomEmojis',
 	'canUseEmojiAsAvatarDecoration',
 	'canSearchIpHistory',
-	...accountDeletionPolicyKeys,
+	'canDeleteAccount',
+	'canPurgeAccount',
 	'canUseChunkedUpload',
 	'chunkedUploadMaxConcurrentSessions',
 	'chunkedUploadMaxPendingMb',

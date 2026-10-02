@@ -14656,6 +14656,18 @@ export interface Locale extends ILocale {
     };
     "_mkgoRolePolicy": {
         /**
+         * 範囲やレベル数の変更で取得間隔が1〜1440分を超える場合、範囲先頭の値を1〜1440分の整数に補正し、倍率の加算値を0に戻します。保存前にプレビューを確認してください。
+         */
+        "genshinRefreshRange_caption": string;
+        /**
+         * 原神の自動取得間隔（分）
+         */
+        "genshinRefreshIntervalMinutes": string;
+        /**
+         * 所有確認済みの原神UIDを自動更新する最短間隔です。1〜1440分の整数で指定します（既定10分）。EnkaのTTLが長い場合はTTLを優先し、更新確認は1分ごとに行います。同じ優先度のロールでは短い間隔を採用するため、個別ロールで長い間隔を指定する場合は優先度を上げてください。UID所有確認の有効期限や再確認待機は変更しません。
+         */
+        "genshinRefreshIntervalMinutes_caption": string;
+        /**
          * カスタム絵文字の登録を申請できる
          */
         "canRequestCustomEmojis": string;

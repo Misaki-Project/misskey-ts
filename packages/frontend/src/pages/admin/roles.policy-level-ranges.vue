@@ -46,7 +46,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<MkSwitch v-if="policyKind === 'boolean'" :modelValue="Boolean(range.value)" :disabled="readonly" @update:modelValue="value => range.value = value">
 					<template #label>{{ i18n.ts._roleLevel.constantValue }}</template>
 				</MkSwitch>
-				<MkInput v-else-if="policyKind === 'number'" :modelValue="Number(range.value)" type="number" :readonly="readonly" @update:modelValue="value => range.value = Number(value)">
+				<MkInput v-else-if="policyKind === 'number'" :modelValue="Number(range.value)" type="number" :min="isGenshinRefresh ? 1 : undefined" :max="isGenshinRefresh ? 1440 : undefined" :step="isGenshinRefresh ? 1 : undefined" :readonly="readonly" @update:modelValue="value => updateConstant(range, value)">
 					<template #label>{{ i18n.ts._roleLevel.constantValue }}</template>
 				</MkInput>
 				<MkSelect v-else-if="policyKind === 'enum'" :modelValue="String(range.value)" :items="enumItems" :readonly="readonly" @update:modelValue="value => range.value = value">
@@ -69,8 +69,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 			</template>
 			<template v-else-if="range.type === 'multiplier'">
 				<div :class="$style.valueColumns">
-					<MkInput v-model="range.base" type="number" :readonly="readonly"><template #label>{{ i18n.ts._roleLevel.multiplierBase }}</template></MkInput>
-					<MkInput v-model="range.additional" type="number" :readonly="readonly"><template #label>{{ i18n.ts._roleLevel.multiplierAdditional }}</template></MkInput>
+					<MkInput :modelValue="range.base" type="number" :readonly="readonly" @update:modelValue="value => updateMultiplier(range, 'base', value)"><template #label>{{ i18n.ts._roleLevel.multiplierBase }}</template></MkInput>
+					<MkInput :modelValue="range.additional" type="number" :readonly="readonly" @update:modelValue="value => updateMultiplier(range, 'additional', value)"><template #label>{{ i18n.ts._roleLevel.multiplierAdditional }}</template></MkInput>
 				</div>
 				<MkFolder defaultOpen>
 					<template #icon><i class="ti ti-calculator"></i></template>
@@ -87,6 +87,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				</MkFolder>
 			</template>
 		</div>
+		<MkInfo v-if="isGenshinRefresh">{{ i18n.ts._mkgoRolePolicy.genshinRefreshRange_caption }}</MkInfo>
 		<MkButton v-if="!readonly" :disabled="!canAddRange" @click="addRange"><i class="ti ti-plus"></i> {{ i18n.ts._roleLevel.addPolicyRange }}</MkButton>
 	</div>
 </MkFolder>
@@ -103,6 +104,7 @@ import MkSwitch from '@/components/MkSwitch.vue';
 import MkTextarea from '@/components/MkTextarea.vue';
 import { i18n } from '@/i18n.js';
 import { instance } from '@/instance.js';
+import { isGenshinRefreshInterval, validGenshinRefreshMultiplier, normalizeGenshinRefreshMultiplier } from '@/utility/genshin-refresh-policy.js';
 import { moveRangeEnd, moveRangeStart, previewOffsets } from './role-level-editor-utils.js';
 import type { EditablePolicyRange } from './role-level-editor-utils.js';
 import type { RoleLevelConfig, RoleLevelRangeType } from '@/utility/role-level-api.js';
@@ -117,6 +119,7 @@ const numericPolicyKeys = new Set([
 	'antennaLimit', 'avatarDecorationLimit', 'chunkedUploadMaxConcurrentSessions',
 	'chunkedUploadMaxPendingMb', 'clipLimit', 'driveCapacityMb', 'emojiApplicationMaxPending',
 	'emojiApplicationMaxPerDay', 'emojiApplicationMaxPerMonth', 'emojiApplicationMaxPerWeek',
+	'genshinRefreshIntervalMinutes',
 	'inviteExpirationTime', 'inviteLimit', 'inviteLimitCycle', 'maxFileSizeMb', 'mentionLimit',
 	'noteDraftLimit', 'noteEachClipsLimit', 'pinLimit', 'rateLimitFactor', 'scheduledNoteLimit',
 	'userEachUserListsLimit', 'userListLimit', 'webhookLimit', 'wordMuteLimit',
@@ -134,6 +137,7 @@ const policyKind = computed<'boolean' | 'number' | 'enum' | 'stringSet'>(() => {
 	if (props.policyKey === 'chatAvailability') return 'enum';
 	return 'boolean';
 });
+const isGenshinRefresh = computed(() => props.policyKey === 'genshinRefreshIntervalMinutes');
 const rangeTypes = computed(() => [
 	{ label: i18n.ts._roleLevel.noPolicyChange, value: 'base' },
 	{ label: i18n.ts._roleLevel.constant, value: 'const' },
@@ -152,7 +156,19 @@ ensureTiling();
 watch(maxStage, ensureTiling);
 
 function defaultValue(): unknown {
-	return (instance.policies as unknown as Record<string, unknown>)[props.policyKey] ?? null;
+	return (instance.policies as unknown as Record<string, unknown>)[props.policyKey] ?? (isGenshinRefresh.value ? 10 : null);
+}
+
+function updateConstant(range: EditablePolicyRange, value: unknown): void {
+	if (isGenshinRefresh.value && !isGenshinRefreshInterval(value)) return;
+	range.value = Number(value);
+}
+
+function updateMultiplier(range: EditablePolicyRange, key: 'base' | 'additional', value: number): void {
+	const base = key === 'base' ? value : range.base;
+	const additional = key === 'additional' ? value : range.additional;
+	if (isGenshinRefresh.value && !validGenshinRefreshMultiplier(base, additional, range.start, range.end)) return;
+	range[key] = value;
 }
 
 function makeRange(type: RoleLevelRangeType, start: number, end: number): EditablePolicyRange {
@@ -191,6 +207,14 @@ function ensureTiling(): void {
 	if (cursor < finalEnd) normalized.push(makeRange('base', cursor, finalEnd));
 	const others = props.config.policyRanges.filter(range => range.key !== props.policyKey);
 	props.config.policyRanges.splice(0, props.config.policyRanges.length, ...others, ...normalized);
+	normalizeRefreshRanges();
+}
+
+function normalizeRefreshRanges(): void {
+	if (!isGenshinRefresh.value) return;
+	for (const range of ranges.value) {
+		if (range.type === 'multiplier') normalizeGenshinRefreshMultiplier(range);
+	}
 }
 
 function rangeIdentity(range: EditablePolicyRange): number {
@@ -225,14 +249,17 @@ function removeRange(index: number): void {
 	}
 	const configIndex = props.config.policyRanges.indexOf(range);
 	if (configIndex >= 0) props.config.policyRanges.splice(configIndex, 1);
+	normalizeRefreshRanges();
 }
 
 function updateStart(index: number, value: number): void {
 	moveRangeStart(ranges.value, index, value);
+	normalizeRefreshRanges();
 }
 
 function updateEnd(index: number, value: number): void {
 	moveRangeEnd(ranges.value, index, value);
+	normalizeRefreshRanges();
 }
 
 function stageToLevel(stage: number): number {

@@ -73,7 +73,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 							<MkRoleLevelBadge v-for="role in user.roles" :key="role.id" :role="role" :level="roleLevels.get(role.id)"/>
 						</div>
 						<div v-if="iAmModerator" class="moderationNote">
-							<MkTextarea v-if="editModerationNote || (moderationNote != null && moderationNote !== '')" v-model="moderationNote" manualSave>
+							<MkTextarea v-if="editModerationNote || (moderationNote != null && moderationNote !== '')" v-model="moderationNote" manualSave @savingStateChange="(changed) => { isModerationNoteDirty = changed; }">
 								<template #label>{{ i18n.ts.moderationNote }}</template>
 								<template #caption>{{ i18n.ts.moderationNoteDescription }}</template>
 							</MkTextarea>
@@ -205,6 +205,7 @@ import MkPullToRefresh from '@/components/MkPullToRefresh.vue';
 import { isBirthday } from '@/utility/is-birthday.js';
 import { roleLevelApi } from '@/utility/role-level-api.js';
 import type { RoleLevelPublicProfileResponse, RoleLevelUserRole } from '@/utility/role-level-api.js';
+import type XTimeline_TypeReferenceOnly from './index.timeline.vue';
 
 function calcAge(birthdate: string): number {
 	const date = new Date(birthdate);
@@ -262,16 +263,18 @@ const narrow = ref<null | boolean>(null);
 const rootEl = useTemplateRef('rootEl');
 const bannerEl = useTemplateRef('bannerEl');
 const memoTextareaEl = useTemplateRef('memoTextareaEl');
-// XTimeline は defineAsyncComponent なので expose の型が推論されない。
-// MkLazy の下にあるため表示前は null になりうる。
-const timelineEl = useTemplateRef<{ reload: () => Promise<void> }>('timelineEl');
+const timelineEl = useTemplateRef<InstanceType<typeof XTimeline_TypeReferenceOnly>>('timelineEl');
 const memoDraft = ref(props.user.memo);
 const isEditingMemo = ref(false);
 const moderationNote = ref(props.user.moderationNote ?? '');
 const editModerationNote = ref(false);
+const isModerationNoteDirty = ref(false);
 
-watch(moderationNote, async () => {
-	await misskeyApi('admin/update-user-note', { userId: props.user.id, text: moderationNote.value });
+watch(moderationNote, async (newValue) => {
+	// 再取得した値を同期しただけの場合は保存しない
+	if (newValue === (user.value.moderationNote ?? '')) return;
+	await misskeyApi('admin/update-user-note', { userId: user.value.id, text: newValue });
+	user.value.moderationNote = newValue;
 });
 
 const style = computed(() => {
@@ -373,6 +376,8 @@ async function updateMemo() {
 // watch source として無効で、再取得しても memo が古いまま残る。getter で渡す。
 // 編集中は上書きしない (入力中の内容を消してしまう)。
 watch(() => props.user, () => {
+	// 編集中は上書きしない (入力中の内容を消してしまう)
+	if (!isModerationNoteDirty.value) moderationNote.value = props.user.moderationNote ?? '';
 	if (isEditingMemo.value) return;
 	memoDraft.value = props.user.memo;
 });

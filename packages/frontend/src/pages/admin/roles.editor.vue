@@ -165,6 +165,7 @@ const mkGoRolePolicyKeys: string[] = [
 	'emojiApplicationMaxPerWeek',
 	'emojiApplicationMaxPerMonth',
 	'emojiApplicationMaxPending',
+	'genshinRefreshIntervalMinutes',
 ];
 
 const role = ref((() => {

@@ -360,6 +360,17 @@ SPDX-License-Identifier: AGPL-3.0-only
 			</template>
 		</XFolder>
 
+		<XFolder v-if="matchQuery([i18n.ts._mkgoRolePolicy.genshinRefreshIntervalMinutes, 'genshinRefreshIntervalMinutes'])" v-model:policyMeta="genshinRefreshIntervalMinutesMeta" :levelConfig="levelConfig" policyKey="genshinRefreshIntervalMinutes" :isBaseRole="isBaseRole" :readonly="readonly">
+			<template #label>{{ i18n.ts._mkgoRolePolicy.genshinRefreshIntervalMinutes }}</template>
+			<template #valueText>{{ genshinRefreshIntervalMinutes }}</template>
+			<template #default="{ disabled }">
+				<MkInput v-model="genshinRefreshIntervalMinutes" type="number" :min="1" :max="1440" :step="1" :disabled="disabled">
+					<template #label>{{ i18n.ts._mkgoRolePolicy.genshinRefreshIntervalMinutes }}</template>
+					<template #caption>{{ i18n.ts._mkgoRolePolicy.genshinRefreshIntervalMinutes_caption }}</template>
+				</MkInput>
+			</template>
+		</XFolder>
+
 		<!--
 			mk-go 固有 (#2898)。ロール単位で通知を切る。**集約は intersection** なので、
 			複数のロールに属している利用者は全ロールで切られている種類だけが届かなくなる
@@ -605,6 +616,7 @@ type PolicyMetaRecord = {
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { i18n } from '@/i18n.js';
+import { isGenshinRefreshInterval } from '@/utility/genshin-refresh-policy.js';
 import XFolder from './roles.policy-editor.folder.vue';
 
 import MkInput from '@/components/MkInput.vue';
@@ -673,6 +685,7 @@ const mkGoPolicyMetaKeys: string[] = [
 	'emojiApplicationMaxPerWeek',
 	'emojiApplicationMaxPerMonth',
 	'emojiApplicationMaxPending',
+	'genshinRefreshIntervalMinutes',
 ];
 
 function setPolicyMeta(incoming: Partial<PolicyMetaRecord> | undefined): PolicyMetaRecord {
@@ -769,6 +782,15 @@ const emojiApplicationMaxPerMonthMeta = mkGoPolicyMeta('emojiApplicationMaxPerMo
 // 審査待ちの上限 (#2977)。既定 0 = 無制限。
 const emojiApplicationMaxPending = mkGoPolicyValue('emojiApplicationMaxPending', 0);
 const emojiApplicationMaxPendingMeta = mkGoPolicyMeta('emojiApplicationMaxPending');
+
+const genshinRefreshIntervalModel = mkGoPolicyValue('genshinRefreshIntervalMinutes', 10);
+const genshinRefreshIntervalMinutes = computed({
+	get: () => genshinRefreshIntervalModel.value,
+	set: (value: number) => {
+		if (isGenshinRefreshInterval(value)) genshinRefreshIntervalModel.value = value;
+	},
+});
+const genshinRefreshIntervalMinutesMeta = mkGoPolicyMeta('genshinRefreshIntervalMinutes');
 
 /**
  * Add or remove one notification type from the opt-out list (#2898).

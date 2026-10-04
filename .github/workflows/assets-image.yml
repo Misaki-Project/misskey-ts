@@ -54,11 +54,23 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=false
           # タグ push はそのタグ名、workflow_dispatch は入力値をそのまま使う。
           # latest は付けない — mk-go 側が固定タグで参照して再現性を保つため。
           tags: |
             type=ref,event=tag
             type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+
+      - name: Validate explicit version tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          case "$tag" in
+            *-mk.*) ;;
+            *) echo "Only explicit frontend version tags may be published" >&2; exit 1 ;;
+          esac
 
       - name: Build and push
         uses: docker/build-push-action@v6

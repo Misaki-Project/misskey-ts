@@ -626,6 +626,7 @@ import MkSwitch from '@/components/MkSwitch.vue';
 import MkSelect from '@/components/MkSelect.vue';
 import MkInfo from '@/components/MkInfo.vue';
 import type { RoleLevelConfig } from '@/utility/role-level-api.js';
+import { accountDeletionPolicyDefaults } from '@/utility/account-delete-policy.js';
 
 /**
  * Notification types the opt-out policy can target (#2898).
@@ -758,11 +759,11 @@ const canUseEmojiAsAvatarDecorationMeta = mkGoPolicyMeta('canUseEmojiAsAvatarDec
 // internal/effectivepolicy/validation.go の default と揃えること。
 const canSearchIpHistory = mkGoPolicyValue('canSearchIpHistory', false);
 const canSearchIpHistoryMeta = mkGoPolicyMeta('canSearchIpHistory');
-// 自分のアカウント削除 (#9)。**既定 true** — backend の
-// internal/effectivepolicy/validation.go の default と揃えること。
-const canDeleteAccount = mkGoPolicyValue('canDeleteAccount', true);
+// Keep these defaults aligned with shiroha-a/mk
+// internal/effectivepolicy/validation.go (backend PR #3316).
+const canDeleteAccount = mkGoPolicyValue('canDeleteAccount', accountDeletionPolicyDefaults.canDeleteAccount);
 const canDeleteAccountMeta = mkGoPolicyMeta('canDeleteAccount');
-const canPurgeAccount = mkGoPolicyValue('canPurgeAccount', true);
+const canPurgeAccount = mkGoPolicyValue('canPurgeAccount', accountDeletionPolicyDefaults.canPurgeAccount);
 const canPurgeAccountMeta = mkGoPolicyMeta('canPurgeAccount');
 const canUseChunkedUpload = mkGoPolicyValue('canUseChunkedUpload', true);
 const canUseChunkedUploadMeta = mkGoPolicyMeta('canUseChunkedUpload');

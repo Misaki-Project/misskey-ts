@@ -10,6 +10,7 @@ import { $i, iAmModerator } from '@/i.js';
 import MkLoading from '@/pages/_loading_.vue';
 import MkError from '@/pages/_error_.vue';
 import PageTimeline from '@/pages/timeline.vue';
+import { ipLookupLogRedirect } from '@/utility/user-ip-lookup.js';
 
 export const page = (loader: AsyncComponentLoader) => defineAsyncComponent({
 	loader: loader,
@@ -500,14 +501,15 @@ export const ROUTE_DEF = [{
 		name: 'ip-search',
 		component: page(() => import('@/pages/admin/ip-search.vue')),
 	}, {
-		// mk-go: IP 照会の監査記録 (#3106)
+		// mk-go: 旧 URL はモデレーションログ内の IP 監査タブへ移す (#3276)。
 		path: '/ip-lookup-log',
 		name: 'ip-lookup-log',
-		component: page(() => import('@/pages/admin/ip-lookup-log.vue')),
+		redirect: ipLookupLogRedirect,
 	}, {
 		path: '/modlog',
 		name: 'modlog',
 		component: page(() => import('@/pages/admin/modlog.vue')),
+		hash: 'initialTab',
 	}, {
 		path: '/settings',
 		name: 'settings',

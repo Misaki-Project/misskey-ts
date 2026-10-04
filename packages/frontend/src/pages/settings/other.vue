@@ -80,8 +80,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 				</MkFolder>
 			</SearchMarker>
 
-			<SearchMarker v-if="isAccountDeletionAllowed($i.policies)" :keywords="['account', 'close', 'delete']">
-				<MkFolder>
+			<SearchMarker :keywords="['account', 'close', 'delete']">
+				<MkFolder v-if="shouldShowAccountDeletionSection($i.policies, $i.isDeleted)">
 					<template #icon><SearchIcon><i class="ti ti-alert-triangle"></i></SearchIcon></template>
 					<template #label><SearchLabel>{{ i18n.ts.closeAccount }}</SearchLabel></template>
 
@@ -183,7 +183,6 @@ import { enableStoragePersistence, getStoragePersistenceStatusRef, storagePersis
 import { ensureSignin } from '@/i.js';
 import { i18n } from '@/i18n.js';
 import { useEmojiRequestEntry } from '@/utility/emoji-request-entry.js';
-import { isAccountDeletionAllowed } from '@/utility/account-delete-policy.js';
 import { definePage } from '@/page.js';
 import FormSection from '@/components/form/section.vue';
 import { prefer } from '@/preferences.js';
@@ -194,6 +193,7 @@ import { suggestReload } from '@/utility/reload-suggest.js';
 import { cloudBackup } from '@/preferences/utility.js';
 import { roleLevelApi } from '@/utility/role-level-api.js';
 import type { RoleLevelUserRole } from '@/utility/role-level-api.js';
+import { shouldShowAccountDeletionSection } from '@/utility/account-delete-policy.js';
 
 const $i = ensureSignin();
 const levelProfileRoles = ref(new Map<string, RoleLevelUserRole & { hidden: boolean }>());

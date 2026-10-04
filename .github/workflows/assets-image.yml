@@ -22,10 +22,6 @@ on:
       tag:
         description: "Tag to build (e.g. 2026.7.0-mk.5)"
         required: true
-      restore_latest:
-        description: "One-time recovery: restore latest to the verified pre-2026.10.0-mk.misaki.2 digest without building"
-        type: boolean
-        default: false
 
 env:
   REGISTRY: ghcr.io
@@ -41,7 +37,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        if: ${{ inputs.restore_latest != true }}
         with:
           ref: ${{ inputs.tag || github.ref }}
           submodules: recursive
@@ -55,7 +50,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
-        if: ${{ inputs.restore_latest != true }}
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -69,7 +63,6 @@ jobs:
             type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
 
       - name: Validate explicit version tag
-        if: ${{ inputs.restore_latest != true }}
         env:
           INPUT_TAG: ${{ inputs.tag }}
         run: |
@@ -80,7 +73,6 @@ jobs:
           esac
 
       - name: Build and push
-        if: ${{ inputs.restore_latest != true }}
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -92,7 +84,6 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Summary
-        if: ${{ inputs.restore_latest != true }}
         run: |
           {
             echo "### Published"
@@ -101,16 +92,3 @@ jobs:
             echo "${{ steps.meta.outputs.tags }}"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-
-      # The operator approved restoration of this one verified digest only.
-      # Ordinary builds never publish latest. Do not accept arbitrary targets.
-      - name: Restore latest to verified previous digest
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.restore_latest == true }}
-        env:
-          PREVIOUS_DIGEST: sha256:b56b830a7a884fbb07f181703cd6f252bd4f0e7aa88d4ee8d762f22c31744d75
-        run: |
-          image="${REGISTRY,,}/${IMAGE_NAME,,}"
-          docker buildx imagetools create --tag "$image:latest" "$image@$PREVIOUS_DIGEST"
-          actual=$(docker buildx imagetools inspect "$image:latest" --format '{{json .Manifest}}' | jq -r '.digest')
-          test "$actual" = "$PREVIOUS_DIGEST"
-          echo "Restored latest to $actual without changing version tags" >> "$GITHUB_STEP_SUMMARY"

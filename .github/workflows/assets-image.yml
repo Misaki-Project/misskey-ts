@@ -109,7 +109,7 @@ jobs:
         env:
           PREVIOUS_DIGEST: sha256:b56b830a7a884fbb07f181703cd6f252bd4f0e7aa88d4ee8d762f22c31744d75
         run: |
-          image="$REGISTRY/$IMAGE_NAME"
+          image="${REGISTRY,,}/${IMAGE_NAME,,}"
           docker buildx imagetools create --tag "$image:latest" "$image@$PREVIOUS_DIGEST"
           actual=$(docker buildx imagetools inspect "$image:latest" --format '{{json .Manifest}}' | jq -r '.digest')
           test "$actual" = "$PREVIOUS_DIGEST"

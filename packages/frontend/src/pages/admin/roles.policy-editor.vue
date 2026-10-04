@@ -360,6 +360,17 @@ SPDX-License-Identifier: AGPL-3.0-only
 			</template>
 		</XFolder>
 
+		<XFolder v-if="matchQuery([i18n.ts._mkgoRolePolicy.genshinRefreshIntervalMinutes, 'genshinRefreshIntervalMinutes'])" v-model:policyMeta="genshinRefreshIntervalMinutesMeta" :levelConfig="levelConfig" policyKey="genshinRefreshIntervalMinutes" :isBaseRole="isBaseRole" :readonly="readonly">
+			<template #label>{{ i18n.ts._mkgoRolePolicy.genshinRefreshIntervalMinutes }}</template>
+			<template #valueText>{{ genshinRefreshIntervalMinutes }}</template>
+			<template #default="{ disabled }">
+				<MkInput v-model="genshinRefreshIntervalMinutes" type="number" :min="1" :max="1440" :step="1" :disabled="disabled">
+					<template #label>{{ i18n.ts._mkgoRolePolicy.genshinRefreshIntervalMinutes }}</template>
+					<template #caption>{{ i18n.ts._mkgoRolePolicy.genshinRefreshIntervalMinutes_caption }}</template>
+				</MkInput>
+			</template>
+		</XFolder>
+
 		<!--
 			mk-go 固有 (#2898)。ロール単位で通知を切る。**集約は intersection** なので、
 			複数のロールに属している利用者は全ロールで切られている種類だけが届かなくなる
@@ -605,6 +616,7 @@ type PolicyMetaRecord = {
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { i18n } from '@/i18n.js';
+import { isGenshinRefreshInterval } from '@/utility/genshin-refresh-policy.js';
 import XFolder from './roles.policy-editor.folder.vue';
 
 import MkInput from '@/components/MkInput.vue';
@@ -614,6 +626,7 @@ import MkSwitch from '@/components/MkSwitch.vue';
 import MkSelect from '@/components/MkSelect.vue';
 import MkInfo from '@/components/MkInfo.vue';
 import type { RoleLevelConfig } from '@/utility/role-level-api.js';
+import { accountDeletionPolicyDefaults } from '@/utility/account-delete-policy.js';
 
 /**
  * Notification types the opt-out policy can target (#2898).
@@ -673,6 +686,7 @@ const mkGoPolicyMetaKeys: string[] = [
 	'emojiApplicationMaxPerWeek',
 	'emojiApplicationMaxPerMonth',
 	'emojiApplicationMaxPending',
+	'genshinRefreshIntervalMinutes',
 ];
 
 function setPolicyMeta(incoming: Partial<PolicyMetaRecord> | undefined): PolicyMetaRecord {
@@ -745,11 +759,11 @@ const canUseEmojiAsAvatarDecorationMeta = mkGoPolicyMeta('canUseEmojiAsAvatarDec
 // internal/effectivepolicy/validation.go の default と揃えること。
 const canSearchIpHistory = mkGoPolicyValue('canSearchIpHistory', false);
 const canSearchIpHistoryMeta = mkGoPolicyMeta('canSearchIpHistory');
-// 自分のアカウント削除 (#9)。**既定 true** — backend の
-// internal/effectivepolicy/validation.go の default と揃えること。
-const canDeleteAccount = mkGoPolicyValue('canDeleteAccount', true);
+// Keep these defaults aligned with shiroha-a/mk
+// internal/effectivepolicy/validation.go (backend PR #3316).
+const canDeleteAccount = mkGoPolicyValue('canDeleteAccount', accountDeletionPolicyDefaults.canDeleteAccount);
 const canDeleteAccountMeta = mkGoPolicyMeta('canDeleteAccount');
-const canPurgeAccount = mkGoPolicyValue('canPurgeAccount', true);
+const canPurgeAccount = mkGoPolicyValue('canPurgeAccount', accountDeletionPolicyDefaults.canPurgeAccount);
 const canPurgeAccountMeta = mkGoPolicyMeta('canPurgeAccount');
 const canUseChunkedUpload = mkGoPolicyValue('canUseChunkedUpload', true);
 const canUseChunkedUploadMeta = mkGoPolicyMeta('canUseChunkedUpload');
@@ -769,6 +783,15 @@ const emojiApplicationMaxPerMonthMeta = mkGoPolicyMeta('emojiApplicationMaxPerMo
 // 審査待ちの上限 (#2977)。既定 0 = 無制限。
 const emojiApplicationMaxPending = mkGoPolicyValue('emojiApplicationMaxPending', 0);
 const emojiApplicationMaxPendingMeta = mkGoPolicyMeta('emojiApplicationMaxPending');
+
+const genshinRefreshIntervalModel = mkGoPolicyValue('genshinRefreshIntervalMinutes', 10);
+const genshinRefreshIntervalMinutes = computed({
+	get: () => genshinRefreshIntervalModel.value,
+	set: (value: number) => {
+		if (isGenshinRefreshInterval(value)) genshinRefreshIntervalModel.value = value;
+	},
+});
+const genshinRefreshIntervalMinutesMeta = mkGoPolicyMeta('genshinRefreshIntervalMinutes');
 
 /**
  * Add or remove one notification type from the opt-out list (#2898).

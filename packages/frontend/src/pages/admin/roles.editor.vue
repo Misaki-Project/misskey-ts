@@ -118,6 +118,7 @@ import MkInfo from '@/components/MkInfo.vue';
 import { i18n } from '@/i18n.js';
 import { instance } from '@/instance.js';
 import { deepClone } from '@/utility/clone.js';
+import { ensureAccountDeletionRolePolicies } from '@/utility/account-delete-policy.js';
 import type { PolicyMeta } from './roles.policy-editor.vue';
 import { defaultRoleLevelConfig } from '@/utility/role-level-api.js';
 import type { RoleLevelConfig } from '@/utility/role-level-api.js';
@@ -165,11 +166,13 @@ const mkGoRolePolicyKeys: string[] = [
 	'emojiApplicationMaxPerWeek',
 	'emojiApplicationMaxPerMonth',
 	'emojiApplicationMaxPending',
+	'genshinRefreshIntervalMinutes',
 ];
 
 const role = ref((() => {
 	const base = deepClone(props.modelValue);
 	base.levelConfig ??= defaultRoleLevelConfig(base.id ?? '');
+	ensureAccountDeletionRolePolicies(base.policies, instance.policies);
 	// fill missing policy
 	for (const ROLE_POLICY of mkGoRolePolicyKeys) {
 		if (base.policies[ROLE_POLICY] == null) {

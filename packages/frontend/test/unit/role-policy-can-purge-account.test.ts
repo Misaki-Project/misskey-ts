@@ -24,6 +24,7 @@ import { describe, expect, test } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { accountDeletionPolicyDefaults } from '@/utility/account-delete-policy.js';
 
 const KEY = 'canPurgeAccount';
 
@@ -111,7 +112,8 @@ describe('canPurgeAccount is editable in the role policy admin UI', () => {
 	test('is bound to a value with the backend default of true', () => {
 		// 既定は backend の internal/effectivepolicy/validation.go と揃えること。
 		// ここがずれると「保存した値が無い role が別人の既定を継承する」。
-		expect(policyEditor).toMatch(new RegExp(`mkGoPolicyValue\\('${KEY}',\\s*true\\)`));
+		expect(accountDeletionPolicyDefaults.canPurgeAccount).toBe(true);
+		expect(policyEditor).toMatch(new RegExp(`mkGoPolicyValue\\('${KEY}',\\s*accountDeletionPolicyDefaults\\.${KEY}\\)`));
 	});
 
 	test('is bound to a policyMeta (useDefault / priority)', () => {
@@ -153,15 +155,17 @@ describe('canPurgeAccount locale entries', () => {
 describe('self-service account deletion stays gated on canDeleteAccount only', () => {
 	test('the settings guard still reads canDeleteAccount and not canPurgeAccount', () => {
 		const src = otherSettings.replace(htmlComment, '');
-		expect(src).toMatch(/import \{ isAccountDeletionAllowed \} from '@\/utility\/account-delete-policy\.js';/);
-		expect(src).toMatch(/<SearchMarker\s+v-if="isAccountDeletionAllowed\(\$i\.policies\)"/);
+		expect(src).toMatch(/import \{ shouldShowAccountDeletionSection \} from '@\/utility\/account-delete-policy\.js';/);
+		expect(src).toMatch(/<MkFolder\s+v-if="shouldShowAccountDeletionSection\(\$i\.policies, \$i\.isDeleted\)"/);
 		// purge を「消せるか」に混ぜない。canPurgeAccount が false でも
 		// 入口 (自己削除の表示) の見え方は変わらない = 自己削除の表示と実行は別決定。
 		expect(src).not.toContain(KEY);
 	});
 
 	test('the policy helper does not read canPurgeAccount', () => {
-		expect(deletePolicy).toContain('canDeleteAccount');
-		expect(deletePolicy).not.toContain(KEY);
+		const helper = deletePolicy.match(/export function isAccountDeletionAllowed\([^]*?\n\}/)?.[0];
+		expect(helper).toBeDefined();
+		expect(helper).toContain('canDeleteAccount === true');
+		expect(helper).not.toContain(KEY);
 	});
 });
